@@ -1,13 +1,21 @@
-# mindmate_app_v41.py — Premium landing (3D mozak + falling petals + parallax fog + ripple + flower cursor)
-# + Dinamična tema po dobu dana (jutro/dan/veče)
-# Sve je “template string” sa .replace() placeholderima (nema f-string kolizija)
+# mindmate_app_v41.py — Premium landing + cele sekcije + Plotly fallback
+# Uključeno: 3D mozak (Three.js), falling petals (SVG), parallax fog, ripple, flower cursor, sticky CTA
+# Sekcije: trust, steps, features, improve+progress, KPI, animirani SVG graf, testimonials, FAQ, pricing
+# Plotly je opcioni; ako nije instaliran, koristi se Streamlit line_chart
 
 import os, json, requests, math
 import streamlit as st
-import plotly.express as px
 from datetime import datetime, date, timedelta
 from tinydb import TinyDB, Query
 from streamlit.components.v1 import html as st_html
+
+# Plotly je opcioni: koristimo ga ako postoji, inače fallback
+try:
+    import plotly.express as px
+    HAS_PLOTLY = True
+except Exception:
+    HAS_PLOTLY = False
+    px = None
 
 APP_TITLE = "MindMate"
 DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")
@@ -25,7 +33,7 @@ def safe_rerun():
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 
-# Globalni stil
+# Globalni stil okvira
 st.markdown("""
 <style>
 .main .block-container{
@@ -191,7 +199,7 @@ elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# ====== LANDING (sa dinamičnim temama i svim efektima) ======
+# ====== LANDING (sa svim sekcijama + efektima) ======
 LANDING_TEMPLATE = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -208,7 +216,7 @@ body.evening{ --bg:#080A0F; --fog1:rgba(124,92,255,.33); --fog2:rgba(78,163,255,
 *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
   font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,sans-serif; overflow-x:hidden}
 
-/* --- BRAND BACKGROUND (mesh gradient + noise) --- */
+/* BRAND MESH + noise */
 .bg-wrap{position:fixed;inset:0;z-index:0;
   background:
     radial-gradient(1200px 700px at 20% -10%, rgba(124,92,255,.28), transparent 60%),
@@ -220,32 +228,31 @@ body.evening{ --bg:#080A0F; --fog1:rgba(124,92,255,.33); --fog2:rgba(78,163,255,
   <filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/></filter>\
   <rect width="100%" height="100%" filter="url(%23n)" opacity=".55"/></svg>');}
 
-/* FOG / PARALLAX */
+/* FOG parallax */
 .fog{position:fixed;inset:-10vh -10vw;z-index:2;pointer-events:none;filter:blur(48px) saturate(1.06);opacity:.40}
 .fog.f1{background:radial-gradient(800px 520px at 14% 16%, var(--fog1), transparent 60%)}
 .fog.f2{background:radial-gradient(900px 600px at 86% 18%, var(--fog2), transparent 60%)}
 .fog.f3{background:radial-gradient(1000px 700px at 50% 80%, var(--fog1), transparent 60%)}
 
-/* PETALS (SVG; 3 sloja; z-index 3) */
+/* PETALS sloj (SVG) */
 .petals{position:fixed;inset:0;z-index:3;pointer-events:none;overflow:hidden}
 
-/* GLOBAL SECTIONS */
+/* Sekcije */
 .section{width:min(1320px,95vw);margin:0 auto;padding:42px 0;position:relative;z-index:5}
 .reveal{opacity:0;transform:translateY(18px);transition:all .7s ease}
 .reveal.visible{opacity:1;transform:translateY(0)}
 
-/* HERO */
 .hero{text-align:center;margin-top:18px}
 .h-eyebrow{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);
   border:1px solid rgba(255,255,255,.08);font-size:12px;margin-bottom:10px}
 .h-title{font-size:3.1rem;line-height:1.1;margin:0 0 8px}
 .h-sub{color:var(--mute);font-size:1.08rem;margin:0}
 
-/* 3D BRAIN */
+/* 3D mozak */
 .brain-wrap{position:relative;height:480px;margin-top:6px}
 #brainCanvas{position:absolute;inset:0;margin:auto;width:100%;height:100%;z-index:6}
 
-/* VSL — VEĆI + GLOW RING */
+/* VSL sa glow ringom */
 .vsl-shell{max-width:1100px;margin:14px auto 12px;padding:12px;background:rgba(255,255,255,.04);
   border:1px solid rgba(255,255,255,.06);border-radius:18px;box-shadow:0 28px 72px rgba(0,0,0,.55);
   transform-style:preserve-3d;perspective:1000px;position:relative}
@@ -293,7 +300,7 @@ body.evening{ --bg:#080A0F; --fog1:rgba(124,92,255,.33); --fog2:rgba(78,163,255,
 .kpi .num{font-size:2.2rem;font-weight:900;background:linear-gradient(90deg,#7C5CFF,#4EA3FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .kpi .label{color:#9AA3B2;margin-top:6px}
 
-/* CHART */
+/* CHART (SVG) */
 .chart-wrap{background:#0F1219;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:18px;box-shadow:0 14px 36px rgba(0,0,0,.28)}
 .legend{display:flex;gap:14px;align-items:center;color:#C7CEDA;margin-bottom:8px}.dot{width:12px;height:12px;border-radius:50%}
 .dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
@@ -348,7 +355,7 @@ body.evening{ --bg:#080A0F; --fog1:rgba(124,92,255,.33); --fog2:rgba(78,163,255,
 <div class="fog f2" id="fog2"></div>
 <div class="fog f3" id="fog3"></div>
 
-<!-- PETALS -->
+<!-- PETALS kao SVG -->
 <svg class="petals" id="petals" xmlns="http://www.w3.org/2000/svg"></svg>
 
 <!-- HERO -->
@@ -551,7 +558,7 @@ function scr(){req()} function req(){if(!tick){requestAnimationFrame(upd);tick=t
 function upd(){tick=false;const sc=scrollY||0; f1.style.transform=`translate3d(${sx*12}px, ${sc*.06+sy*10}px,0)`; f2.style.transform=`translate3d(${sx*-16}px, ${sc*.10+sy*-10}px,0)`; f3.style.transform=`translate3d(${sx*8}px, ${sc*.04+sy*6}px,0)`}
 addEventListener('mousemove',move,{passive:true}); addEventListener('scroll',scr,{passive:true}); upd();
 
-// ===== Falling petals (SVG petal) =====
+// ===== Falling petals (SVG) =====
 const svgNS="http://www.w3.org/2000/svg"; const petals=document.getElementById('petals');
 function addPetal(scale, opacity, durMin, durMax){
   const s=(12+Math.random()*22)*scale;
@@ -582,7 +589,7 @@ function addPetal(scale, opacity, durMin, durMax){
   g.animate(kyframes,{duration:dur,easing:'linear'});
   setTimeout(()=>g.remove(), dur);
 }
-// početni burst + tri sloja
+// burst + tri sloja
 for(let i=0;i<26;i++) addPetal(1, .75, 6500, 9500);
 setInterval(()=>addPetal(1.0, .70, 7000, 11000), 600);
 setInterval(()=>addPetal(.9,  .55, 8000, 12000), 800);
@@ -690,7 +697,6 @@ def render_landing():
             .replace("__PROGRESS_COUNT__", str(progress_count))
             .replace("__PROGRESS_GOAL__", str(progress_goal))
             )
-    # veća visina da sve stane
     st_html(html, height=3600, width=1280, scrolling=True)
 
 # ====== HOME / CHAT / CHECKIN / ANALYTICS ======
@@ -740,13 +746,22 @@ def render_checkin():
 def render_analytics():
     st.subheader("📈 Analitika")
     rows=sorted(TCheckins.all(), key=lambda r:r.get("date",""))
-    if not rows: st.info("Još nema podataka. Uradi prvi check-in."); return
+    if not rows:
+        st.info("Još nema podataka. Uradi prvi check-in.")
+        return
     dates=[r.get("date","") for r in rows]
     totals=[int(r.get("phq1",0))+int(r.get("phq2",0))+int(r.get("gad1",0))+int(r.get("gad2",0)) for r in rows]
-    fig=px.line(x=dates, y=totals, markers=True, title="Ukupan skor (PHQ2+GAD2) kroz vreme")
-    fig.update_layout(paper_bgcolor="#0B0D12", plot_bgcolor="#11141C", font_color="#E8EAEE",
-                      xaxis_title="Datum", yaxis_title="Skor (0–12)")
-    st.plotly_chart(fig, use_container_width=True)
+    if HAS_PLOTLY:
+        fig=px.line(x=dates, y=totals, markers=True, title="Ukupan skor (PHQ2+GAD2) kroz vreme")
+        fig.update_layout(paper_bgcolor="#0B0D12", plot_bgcolor="#11141C", font_color="#E8EAEE",
+                          xaxis_title="Datum", yaxis_title="Skor (0–12)")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        import pandas as pd
+        df=pd.DataFrame({"Datum":dates,"Skor":totals}).set_index("Datum")
+        st.line_chart(df, use_container_width=True)
+        st.info("Prikaz je preko Streamlit line_chart jer Plotly nije instaliran. "
+                "Za bogatiji graf instaliraj: pip install plotly")
 
 # Router
 page=st.session_state.page
