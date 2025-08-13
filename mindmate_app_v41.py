@@ -222,7 +222,7 @@ NAV_HTML = f"""
                transform-origin:left; transition:transform .25s cubic-bezier(.2,.8,.2,1)}}
 .k-links a.active .u{{transform:scaleX(1)}}
 @media (max-width:720px){
-  .k-nav{{margin:6px auto}}
+.k-nav{{{{margin:6px auto}}}}
   .k-links a{{padding:7px 10px}}
 }
 </style>
