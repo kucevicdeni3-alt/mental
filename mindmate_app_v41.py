@@ -1,20 +1,18 @@
-# mindmate_app_v41_responsive.py — PREMIUM landing (VSL preko “glow” kruga) + global latice + flower cursor
-# + kompletna RESPONSIVE prilagodljivost (desktop/tablet/phone)
-# + mikro-interakcije, parallax, KPI, mini graf, sekcije (Timeline, Nauka, Rezultati, Testimonials, FAQ, Pricing),
-# + Sticky CTA, Početna, Chat (Ollama/OpenAI), Check-in, Analitika (Plotly)
+# mindmate_app_v42.py — Hero sa “planet glow” iza VSL-a + KPI + Chart (vraćeno),
+# responsive dizajn, bez before/after; Pro Features + Comparison; Sticky CTA;
+# Početna / Chat (Ollama ili OpenAI) / Check-in / Analitika (Plotly)
 
 import os, json, requests, math
 import streamlit as st
 from datetime import datetime, date, timedelta
 from streamlit.components.v1 import html as st_html
 
-# ===== Plotly / Pandas (za Analitiku) =====
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
 APP_TITLE = "MindMate"
-DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")  # JSON datoteka
+DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")
 
 # Chat backend env
 CHAT_PROVIDER = os.environ.get("CHAT_PROVIDER", "ollama").lower().strip()
@@ -29,20 +27,16 @@ def safe_rerun():
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 
-# ---------- Globalni stil okvira ----------
+# ---------- GLOBAL STYLES (responsive patch) ----------
 st.markdown("""
 <style>
-/* --- RESPONSIVE PATCH: rastegni glavni kontejner na punu širinu, smanji padding na manjim ekranima --- */
+/* Fluid main container */
 .main .block-container{
   padding-top:.6rem!important; padding-left:3rem!important; padding-right:3rem!important;
   max-width:1440px!important; margin-inline:auto!important;
 }
-@media (max-width: 1100px){
-  .main .block-container{ padding-left:2rem!important; padding-right:2rem!important; }
-}
-@media (max-width: 768px){
-  .main .block-container{ padding-left:1rem!important; padding-right:1rem!important; }
-}
+@media (max-width:1100px){ .main .block-container{padding-left:2rem!important;padding-right:2rem!important} }
+@media (max-width:768px){ .main .block-container{padding-left:1rem!important;padding-right:1rem!important} }
 .element-container > div:has(> iframe){display:flex; justify-content:center;}
 .stButton>button[kind="primary"]{
   background:linear-gradient(90deg,#7C5CFF,#4EA3FF)!important;color:#0B0D12!important;
@@ -51,7 +45,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- JSON “baza” ----------
+# ---------- JSON “BAZA” ----------
 def _init_db():
     if not os.path.exists(DB_PATH):
         with open(DB_PATH, "w", encoding="utf-8") as f:
@@ -145,14 +139,7 @@ def compute_trend_series():
             prod.append(int(65+18*math.sin(t*3.14*.9)+7*t))
     return labels, prod, mood
 
-def current_month_progress():
-    db = _get_db()
-    today=date.today(); start=today.replace(day=1).isoformat()
-    count=len([r for r in db["checkins"] if (r.get("date") or "")>=start]); goal=20
-    pct=min(100,int(100*count/max(goal,1)))
-    return pct, count, goal
-
-# ---------- Chat backends ----------
+# ---------- CHAT BACKENDS ----------
 def chat_ollama(messages):
     try:
         r = requests.post(f"{OLLAMA_HOST}/api/chat",
@@ -201,12 +188,12 @@ SYSTEM_PROMPT = (
     "Daj mikro-korake (5–10min) i traži kratke update-e."
 )
 
-# ---------- Router state ----------
+# ---------- ROUTER ----------
 if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ---------- NAVBAR ----------
+# ---------- NAV ----------
 st.markdown("""
 <style>
 .mm-navwrap{position:sticky;top:0;z-index:9;background:rgba(17,20,28,.55);backdrop-filter:blur(12px);
@@ -219,9 +206,7 @@ st.markdown("""
 .mm-links a{text-decoration:none;color:#E8EAEE;font-weight:700;padding:8px 12px;border:1px solid rgba(255,255,255,.08);
             border-radius:12px;background:rgba(255,255,255,.02);transition:transform .18s ease}
 .mm-links a:hover{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.02)}
-@media (max-width: 640px){
-  .mm-links a{padding:6px 10px;font-weight:700}
-}
+@media (max-width: 640px){ .mm-links a{padding:6px 10px} }
 </style>
 <div class="mm-navwrap"><div class="mm-nav">
   <div class="mm-brand"><div class="mm-dot"></div><div>MindMate</div></div>
@@ -239,100 +224,82 @@ elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# --- REPLACE your LANDING_TEMPLATE with this ---
+# ---------- LANDING (planet glow + VSL + KPI + Chart) ----------
 LANDING_TEMPLATE = """
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8"/>
+<!doctype html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <style>
-:root{
-  --bg:#0B0D12; --text:#E8EAEE; --muted:#A9B1C1;
-  --panel:#10131B; --ring:rgba(255,255,255,.08);
-  --g1:#7C5CFF; --g2:#4EA3FF;
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
-
-/* container */
-.section{width:min(1200px,95vw);margin:0 auto;padding:48px 0}
-.h1{font-size:clamp(28px,4.2vw,48px);line-height:1.1;margin:0}
-.lead{color:var(--muted);font-size:clamp(14px,2vw,18px);margin:8px 0 0}
+:root{ --bg:#0B0D12; --panel:#10131B; --text:#E8EAEE; --mute:#A9B1C1; --ring:rgba(255,255,255,.08);
+       --g1:#7C5CFF; --g2:#4EA3FF; }
+*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
+.section{width:min(1200px,95vw);margin:0 auto;padding:42px 0}
 .badge{display:inline-flex;gap:10px;align-items:center;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--ring);color:#C7CEDA;font-weight:800}
+.h1{font-size:clamp(28px,4.2vw,48px);line-height:1.1;margin:8px 0 6px}
+.lead{color:var(--mute);font-size:clamp(14px,2vw,18px);margin:0}
 
-/* planet hero */
-.hero{padding-top:22px}
-.planet-wrap{position:relative;margin-top:14px}
-.planet{
-  position:relative;border-radius:24px;background:linear-gradient(180deg,#0D0F17 0%,#0D0F17 60%,#0B0D12 100%);
-  border:1px solid var(--ring); padding:clamp(14px,2vw,18px);
-  overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.55);
-}
-.planet:before{ /* glow ring (planet arc) */
-  content:""; position:absolute; inset:-20% -10% auto -10%; height:70%;
+/* HERO with planet glow */
+.hero{padding-top:10px;text-align:center}
+.planet-wrap{position:relative;margin-top:12px}
+.glow-orbit{position:absolute;left:50%;top:0;transform:translate(-50%, -38%);width:min(1180px,96vw);height:min(1180px,96vw); pointer-events:none; z-index:0;
   background:
-    radial-gradient(70% 120% at 50% 100%, rgba(124,92,255,.45), transparent 60%),
-    radial-gradient(60% 100% at 50% 100%, rgba(78,163,255,.35), transparent 65%);
-  filter:blur(18px); opacity:.9; pointer-events:none;
+    radial-gradient(60% 40% at 50% 55%, rgba(124,92,255,.50), transparent 60%),
+    radial-gradient(56% 38% at 50% 60%, rgba(78,163,255,.40), transparent 65%);
+  filter: blur(22px) saturate(1.04); opacity:.85;
 }
-.vsl{
-  aspect-ratio:16/9; width:100%; border-radius:16px; overflow:hidden; border:1px solid var(--ring);
-  background:#000; position:relative;
-}
+.planet-card{position:relative;border:1px solid var(--ring); background:linear-gradient(180deg,#0D0F17 0%,#0D0F17 58%,#0B0D12 100%);
+  box-shadow:0 30px 80px rgba(0,0,0,.55); border-radius:22px; padding:clamp(12px,2vw,16px); z-index:1; }
+.vsl{aspect-ratio:16/9;width:100%;border-radius:14px;overflow:hidden;border:1px solid var(--ring);background:#000}
 .vsl iframe{width:100%;height:100%;border:0;display:block}
 
-/* flower arrow (branding) */
-.flower{
-  width:26px;height:26px;border-radius:50%;
-  background:radial-gradient(circle at 30% 30%,var(--g1),var(--g2));
-  box-shadow:0 0 14px rgba(124,92,255,.55);
-}
-.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}
+/* CTA */
+.cta{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:14px}
 .btn{padding:12px 16px;border-radius:14px;border:1px solid var(--ring);text-decoration:none;color:var(--text);font-weight:800;display:inline-flex;gap:10px;align-items:center;transition:transform .18s ease}
 .btn:hover{transform:translateY(-1px) scale(1.03)}
 .btn-primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
 .btn-ghost{background:rgba(255,255,255,.06)}
+.flower{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 30% 30%,var(--g1),var(--g2));box-shadow:0 0 14px rgba(124,92,255,.55)}
 
-/* before/after slider */
-.ba{display:grid;grid-template-columns:1fr;gap:14px}
-.ba .rail{position:relative;border:1px solid var(--ring);border-radius:16px;overflow:hidden;background:#0A0C12}
-.ba img{display:block;width:100%;height:auto}
-.ba .after{position:absolute;inset:0;overflow:hidden}
-.ba .after img{position:absolute;inset:0;height:100%;width:100%;object-fit:cover;clip-path:inset(0 0 0 var(--clip,50%))}
-.ba .knob{display:flex;gap:10px;align-items:center}
-input[type="range"]{width:100%}
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;margin-top:20px}
+.kpi{grid-column:span 4;background:rgba(17,20,28,.58);border:1px solid var(--ring);border-radius:16px;padding:22px;text-align:center}
+.kpi .num{font-size:clamp(24px,3.2vw,36px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.kpi .label{color:var(--mute);margin-top:6px}
 
-/* features grid */
+/* Mini Chart (SVG) */
+.chart-wrap{background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px;box-shadow:0 14px 36px rgba(0,0,0,.28); margin-top:18px}
+.legend{display:flex;gap:14px;align-items:center;color:#C7CEDA;margin-bottom:8px}.dot{width:12px;height:12px;border-radius:50%}
+.dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
+
+/* Features + Comparison */
 .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
-.card{grid-column:span 4;background:var(--panel);border:1px solid var(--ring);border-radius:16px;padding:18px}
-.card h4{margin:.2rem 0}.muted{color:var(--muted)}
-@media (max-width: 1024px){ .card{grid-column:span 6} }
-@media (max-width: 680px){ .card{grid-column:span 12} }
-
-/* comparison table */
+.card{grid-column:span 4;background:#10131B;border:1px solid var(--ring);border-radius:16px;padding:18px}
+.card h4{margin:.2rem 0}.muted{color:var(--mute)}
 .table{border:1px solid var(--ring);border-radius:16px;overflow:hidden}
 .table table{width:100%;border-collapse:collapse}
 .table th,.table td{padding:12px 14px;border-bottom:1px solid var(--ring)}
 .table th{text-align:left;background:rgba(255,255,255,.04)}
 .tick{color:#71F0A9;font-weight:900}
 
-/* sticky bar */
+/* Sticky CTA */
 .sticky{position:fixed;left:0;right:0;bottom:16px;z-index:50;display:flex;justify-content:center;pointer-events:none}
 .sticky .inner{pointer-events:auto;width:min(1100px,92vw);background:rgba(20,24,33,.72);backdrop-filter:blur(12px);border:1px solid var(--ring);border-radius:16px;padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}
-@media (max-width: 680px){ .sticky .inner{grid-template-columns:1fr} }
+@media (max-width:1100px){ .card{grid-column:span 6} }
+@media (max-width:768px){
+  .sticky .inner{grid-template-columns:1fr}
+  .card{grid-column:span 12}
+}
 </style>
 </head>
 <body>
 
-<!-- HERO -->
 <section class="section hero">
   <div class="badge"><span class="flower"></span> Dobrodošao u MindMate</div>
-  <h1 class="h1">See the Time-Saving Difference Instantly</h1>
-  <p class="lead">VSL ide “preko planete”, a iza je naš **glow** luk. Sve je brzo, jasno i na srpskom.</p>
+  <h1 class="h1">Diskretna podrška mentalnom zdravlju — odmah, 24/7</h1>
+  <p class="lead">VSL preko “planete” sa glow efektom + naš brending (flower strelica).</p>
 
   <div class="planet-wrap">
-    <div class="planet">
+    <div class="glow-orbit"></div>
+    <div class="planet-card">
       <div class="vsl">
         <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1"
                 title="MindMate VSL" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
@@ -343,27 +310,32 @@ input[type="range"]{width:100%}
       </div>
     </div>
   </div>
-</section>
 
-<!-- BEFORE / AFTER -->
-<section class="section">
-  <h2 class="h1" style="font-size:clamp(22px,3.4vw,32px)">Can you spot the difference?</h2>
-  <p class="lead">Pomeraj klizač da vidiš workflow bez i sa MindMate-om.</p>
-  <div class="ba">
-    <div class="rail" id="baRail">
-      <img src="https://images.unsplash.com/photo-1556157382-97eda2d62296?q=80&w=1800&auto=format&fit=crop" alt="Before"/>
-      <div class="after" id="baAfter" style="--clip:50%">
-        <img src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=1800&auto=format&fit=crop" alt="After"/>
-      </div>
-    </div>
-    <div class="knob">
-      <input id="baRange" type="range" min="0" max="100" value="50"/>
-      <div class="muted">← Bez • Sa →</div>
-    </div>
+  <!-- KPI -->
+  <div class="kpis" id="kpiBlock">
+    <div class="kpi"><div class="num" data-target="__SESS__">0</div><div class="label">Ukupno sesija</div></div>
+    <div class="kpi"><div class="num" data-target="__USERS__">0</div><div class="label">Aktivnih korisnika</div></div>
+    <div class="kpi"><div class="num" data-target="__SAT__">0</div><div class="label">Zadovoljstvo (%)</div></div>
   </div>
 </section>
 
-<!-- PRO FEATURES -->
+<!-- CHART -->
+<section class="section">
+  <div class="chart-wrap">
+    <div style="font-weight:900;margin:0 0 10px 0">Produktivnost & Raspoloženje (poslednje sesije)</div>
+    <div class="legend"><div class="dot dot-prod"></div><div>Produktivnost</div><div class="dot dot-mood" style="margin-left:12px"></div><div>Raspoloženje</div></div>
+    <svg id="mmChart" viewBox="0 0 1100 360" width="100%" height="360" preserveAspectRatio="xMidYMid meet">
+      <defs><linearGradient id="gProd" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
+      <linearGradient id="gMood" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#4EA3FF"/><stop offset="100%" stop-color="#7C5CFF"/></linearGradient></defs>
+      <g id="grid"></g>
+      <path id="prodPath" fill="none" stroke="url(#gProd)" stroke-width="3" stroke-linecap="round"/>
+      <path id="moodPath" fill="none" stroke="url(#gMood)" stroke-width="3" stroke-linecap="round"/>
+      <g id="xlabels"></g>
+    </svg>
+  </div>
+</section>
+
+<!-- FEATURES -->
 <section class="section">
   <h2 class="h1" style="font-size:clamp(22px,3.4vw,32px)">MindMate Pro Features</h2>
   <div class="grid">
@@ -376,7 +348,7 @@ input[type="range"]{width:100%}
   </div>
 </section>
 
-<!-- COMPARISON TABLE -->
+<!-- COMPARISON -->
 <section class="section">
   <div class="table">
     <table>
@@ -391,7 +363,7 @@ input[type="range"]{width:100%}
   </div>
 </section>
 
-<!-- STICKY BAR -->
+<!-- STICKY CTA -->
 <div class="sticky">
   <div class="inner">
     <div class="muted">Tvoj bolji dan počinje sada — check-in, mikro-navike, jasni trendovi.</div>
@@ -403,27 +375,36 @@ input[type="range"]{width:100%}
 </div>
 
 <script>
-/* before/after slider */
-const range=document.getElementById('baRange'), after=document.getElementById('baAfter');
-range.addEventListener('input', e=>{ after.style.setProperty('--clip', e.target.value + '%'); });
+// KPI count-up
+function countUp(el){const t=parseInt(el.getAttribute('data-target'))||0,d=1400,s=performance.now();
+  function tick(now){const p=Math.min((now-s)/d,1);el.textContent=Math.floor(t*(.1+.9*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)}
+  requestAnimationFrame(tick)}
+const kio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.num').forEach(countUp);kio.unobserve(x.target)}})},{threshold:.35});
+document.querySelectorAll('#kpiBlock').forEach(el=>kio.observe(el));
 
-/* smooth hover ink optional: already light design, omitted to keep minimal */
+// Mini chart
+const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=360,P=48,ymin=0,ymax=100;
+const grid=document.getElementById('grid'), xg=document.getElementById('xlabels'), svg=document.getElementById('mmChart');
+for(let i=0;i<=5;i++){const y=P+(H-2*P)*(i/5), l=document.createElementNS("http://www.w3.org/2000/svg","line");
+  l.setAttribute("x1",P);l.setAttribute("x2",W-P);l.setAttribute("y1",y);l.setAttribute("y2",y);l.setAttribute("stroke","rgba(255,255,255,.08)");grid.appendChild(l)}
+labels.forEach((lab,i)=>{const x=P+(W-2*P)*(i/(labels.length-1||1)), t=document.createElementNS("http://www.w3.org/2000/svg","text");
+  t.setAttribute("x",x);t.setAttribute("y",H-12);t.setAttribute("fill","#9AA3B2");t.setAttribute("font-size","12");t.setAttribute("text-anchor","middle");
+  t.textContent=lab.slice(5).replace("-","/");xg.appendChild(t)});
+function path(vals){const pts=vals.map((v,i)=>[P+(W-2*P)*(i/(vals.length-1||1)), P+(H-2*P)*(1-(v-ymin)/(ymax-ymin))]);
+  if(!pts.length)return ""; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=1;i<pts.length;i++){d+=` L ${pts[i][0]} ${pts[i][1]}`} return d}
+const prodPath=document.getElementById('prodPath'), moodPath=document.getElementById('moodPath');
+prodPath.setAttribute("d",path(prod)); moodPath.setAttribute("d",path(mood));
+function strokeAnim(p,d=1600){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
+const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){strokeAnim(prodPath,1400);setTimeout(()=>strokeAnim(moodPath,1600),200);cio.unobserve(svg)}})},{threshold:.3});
+cio.observe(svg);
 </script>
-</body>
-</html>
+
+</body></html>
 """
 
-# --- REPLACE your render_landing() with this (keeps your metrics feed) ---
 def render_landing():
     users, sessions, sat = compute_metrics()
     labels, prod, mood = compute_trend_series()
-    quotes = [
-        "Mali koraci, veliki pomaci.",
-        "Danas bolje nego juče, sutra bolje nego danas.",
-        "Ne moraš sve — dovoljno je malo, ali svaki dan.",
-        "Disanje. Fokus. Jedan korak napred.",
-        "Kad ne ide — budi blag/a prema sebi."
-    ]
     html = (LANDING_TEMPLATE
             .replace("__SESS__", str(max(sessions,0)))
             .replace("__USERS__", str(users or 1))
@@ -431,11 +412,8 @@ def render_landing():
             .replace("__X_LABELS__", json.dumps(labels))
             .replace("__P_SERIES__", json.dumps(prod))
             .replace("__M_SERIES__", json.dumps(mood))
-            .replace("__QUOTES__", json.dumps(quotes))
            )
-    # Visina iframe-a; unutra je full responsive
-    st_html(html, height=3200, width=1280, scrolling=True)
-
+    st_html(html, height=3000, width=1280, scrolling=True)
 
 # ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
@@ -521,7 +499,7 @@ def render_analytics():
     except Exception:
         pass
 
-# ---------- Router ----------
+# ---------- ROUTE ----------
 page=st.session_state.page
 if page=="landing": render_landing()
 elif page=="home": render_home()
