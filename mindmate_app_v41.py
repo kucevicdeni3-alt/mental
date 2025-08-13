@@ -1,21 +1,24 @@
-# app.py — MindMate • premium landing sa vidljivom “planet” glow pozadinom,
-# smanjen VSL (tvoj link), Flower Mira maskota, hook, dodatne metrike/trust,
-# Početna/Chat/Check-in/Analitika (Plotly) — sve responsive.
+# app.py — MindMate premium landing
+# - Hero hook + Flower Mira
+# - Vidljiva "planeta" (glow orb) iza VSL-a (smanjen)
+# - "Trusted by" ispod hero dela (puni prazan prostor)
+# - Sporije reveal animacije, hover scale-up fix
+# - Dinamična pozadina (3 band-a menjaju ton dok skroluješ)
+# - Features, Comparison, Integrations, Testimonials, FAQ
+# - Početna/Chat/Check-in/Analitika (Plotly)
 
 import os, json, requests, math
 import streamlit as st
 from datetime import datetime, date, timedelta
 from streamlit.components.v1 import html as st_html
 
-# ===== Plotly / Pandas (za Analitiku) =====
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
 APP_TITLE = "MindMate"
-DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")  # JSON datoteka
+DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")
 
-# Chat backend env
 CHAT_PROVIDER = os.environ.get("CHAT_PROVIDER", "ollama").lower().strip()
 OLLAMA_HOST   = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL  = os.environ.get("OLLAMA_MODEL", "llama3.1")
@@ -28,7 +31,7 @@ def safe_rerun():
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 
-# ---------- Globalni stil okvira (responsive padding) ----------
+# ---------- Global okvir ----------
 st.markdown("""
 <style>
 .main .block-container{
@@ -46,7 +49,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- JSON “baza” ----------
+# ---------- “Baza” ----------
 def _init_db():
     if not os.path.exists(DB_PATH):
         with open(DB_PATH, "w", encoding="utf-8") as f:
@@ -102,15 +105,12 @@ def save_chat_event(uid, role, content):
     })
     _persist_db()
 
-# --------- Metričke pomoćne funkcije ---------
 def compute_metrics():
     db = _get_db()
     uids = set([r.get("uid","") for r in db["checkins"]] + [r.get("uid","") for r in db["chat_events"]])
     uids.discard("")
     users = len(uids) or 1
     sessions = sum(1 for r in db["chat_events"] if r.get("role")=="user")
-
-    # Zadovoljstvo iz poslednjih 30 dana (proxy iz checkin total skora)
     cutoff = datetime.utcnow()-timedelta(days=30)
     recent = []
     for r in db["checkins"]:
@@ -121,13 +121,10 @@ def compute_metrics():
         good=sum(1 for r in recent if (int(r.get("phq1",0))+int(r.get("phq2",0))+int(r.get("gad1",0))+int(r.get("gad2",0)))<=3)
         sat = int(round(100*good/len(recent)))
     else: sat=92
-
-    # Dodatne metrike (fallback vrednosti + lagani heuristike)
-    avg_minutes = max(4, min(11, 4 + sessions//12))   # prosečno trajanje angažmana
-    streaks     = max(1, min(14, len(recent)//3))     # prosečan streak u danima
-    retention   = min(99, 60 + (len(recent)//5))      # mesečni retention %
-    nps         = min(90, 60 + (sat//2))              # aproksimacija NPS iz satisfakcije
-
+    avg_minutes = max(4, min(11, 4 + sessions//12))
+    streaks     = max(1, min(14, len(recent)//3))
+    retention   = min(99, 60 + (len(recent)//5))
+    nps         = min(90, 60 + (sat//2))
     return users, sessions, sat, avg_minutes, streaks, retention, nps
 
 def compute_trend_series():
@@ -149,13 +146,6 @@ def compute_trend_series():
             mood.append(int(70+20*math.sin(t*3.14)+5*t))
             prod.append(int(65+18*math.sin(t*3.14*.9)+7*t))
     return labels, prod, mood
-
-def current_month_progress():
-    db = _get_db()
-    today=date.today(); start=today.replace(day=1).isoformat()
-    count=len([r for r in db["checkins"] if (r.get("date") or "")>=start]); goal=20
-    pct=min(100,int(100*count/max(goal,1)))
-    return pct, count, goal
 
 # ---------- Chat backends ----------
 def chat_ollama(messages):
@@ -206,7 +196,7 @@ SYSTEM_PROMPT = (
     "Daj mikro-korake (5–10min) i traži kratke update-e."
 )
 
-# ---------- Router state ----------
+# ---------- Router ----------
 if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
@@ -242,8 +232,7 @@ elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# ---------- LANDING (hook + Flower Mira + vidljiva planeta + smanjen VSL + trust) ----------
-# YouTube VSL: https://youtu.be/1qK0c9J_h10
+# ---------- LANDING (sa Trusted by, sporije animacije, dinamična pozadina) ----------
 LANDING_TEMPLATE = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -258,119 +247,126 @@ LANDING_TEMPLATE = """
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
   font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overflow-x:hidden}
 
-/* background */
+/* BG base */
 .bg-wrap{position:fixed;inset:0;z-index:0;background:
-  radial-gradient(1400px 800px at 18% -10%, rgba(124,92,255,.26), transparent 60%),
-  radial-gradient(1400px 800px at 82% 110%, rgba(78,163,255,.20), transparent 60%), var(--bg);}
+  radial-gradient(1400px 800px at 18% -10%, rgba(124,92,255,.22), transparent 60%),
+  radial-gradient(1400px 800px at 82% 110%, rgba(78,163,255,.18), transparent 60%), var(--bg);}
 .bg-noise{position:fixed;inset:-20%;z-index:1;pointer-events:none;opacity:.08;background-image:url('data:image/svg+xml;utf8,\
 <svg xmlns=\\"http://www.w3.org/2000/svg\\" width=\\"1200\\" height=\\"1200\\"><filter id=\\"n\\"><feTurbulence type=\\"fractalNoise\\" baseFrequency=\\".9\\" numOctaves=\\"2\\" stitchTiles=\\"stitch\\"/></filter><rect width=\\"100%\\" height=\\"100%\\" filter=\\"url(%23n)\\" opacity=\\".55\\"/></svg>');}
-.fog{position:fixed;inset:-10vh -10vw;z-index:2;pointer-events:none;filter:blur(48px) saturate(1.06);opacity:.40}
-.fog.f1{background:radial-gradient(800px 520px at 14% 16%, var(--fog1), transparent 60%)} .fog.f2{background:radial-gradient(900px 600px at 86% 18%, var(--fog2), transparent 60%)} .fog.f3{background:radial-gradient(1000px 700px at 50% 80%, var(--fog1), transparent 60%)}
-.petals{position:fixed;inset:0;z-index:3;pointer-events:none;overflow:hidden}
 
-/* layout */
-.section{width:min(1320px,95vw);margin:0 auto;padding:48px 0;position:relative;z-index:5}
-.reveal{opacity:0;transform:translateY(18px);transition:all .7s ease}
+/* 3 band sloja (menja ton dok skroluješ) */
+.bg-band{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0;transition:opacity 1.6s ease}
+.bg-band.band1{background:radial-gradient(1200px 760px at 70% 30%, rgba(124,92,255,.22), transparent 60%)}
+.bg-band.band2{background:radial-gradient(1200px 760px at 30% 70%, rgba(78,163,255,.22), transparent 60%)}
+.bg-band.band3{background:radial-gradient(1200px 760px at 50% 50%, rgba(154,214,255,.20), transparent 60%)}
+.bg-band.show{opacity:1}
+
+.fog{position:fixed;inset:-10vh -10vw;z-index:3;pointer-events:none;filter:blur(48px) saturate(1.06);opacity:.35}
+.fog.f1{background:radial-gradient(800px 520px at 14% 16%, var(--fog1), transparent 60%)} .fog.f2{background:radial-gradient(900px 600px at 86% 18%, var(--fog2), transparent 60%)} .fog.f3{background:radial-gradient(1000px 700px at 50% 80%, var(--fog1), transparent 60%)}
+.petals{position:fixed;inset:0;z-index:4;pointer-events:none;overflow:hidden}
+
+.section{width:min(1320px,95vw);margin:0 auto;padding:52px 0;position:relative;z-index:5}
+.reveal{opacity:0;transform:translateY(22px);transition:opacity 1.6s ease, transform 1.6s ease}
 .reveal.visible{opacity:1;transform:translateY(0)}
 
-/* HERO HOOK + Flower Mira */
-.hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center}
+/* HERO */
+.hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:32px;align-items:center;min-height:62vh}
 .hook{display:flex;flex-direction:column;gap:14px}
-.hook-eyebrow{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--ring);font-size:12px;color:#C7CEDA}
-.hook-title{font-size:clamp(28px,4.6vw,56px);line-height:1.05;margin:0}
+.hook-eyebrow{display:inline-block;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--ring);font-size:12px;color:#C7CEDA}
+.hook-title{font-size:clamp(30px,4.8vw,64px);line-height:1.04;margin:0}
 .hook-sub{color:#9AA3B2;font-size:clamp(14px,2vw,18px);margin:0}
-.hook-cta{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
-.btn{position:relative;overflow:hidden;display:inline-block;padding:14px 18px;border-radius:14px;font-weight:800;text-decoration:none;border:1px solid var(--ring);cursor:pointer; transition:transform .15s ease}
-.btn:hover{transform:translateY(-1px) scale(1.03)}
+.hook-cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.btn{position:relative;overflow:hidden;display:inline-block;padding:14px 18px;border-radius:14px;font-weight:800;text-decoration:none;border:1px solid var(--ring);cursor:pointer; transition:transform .25s ease}
+.btn:hover{transform:translateY(-1px) scale(1.04)}
 .btn-primary{color:#0B0D12;background:linear-gradient(90deg,#7C5CFF,#4EA3FF)} .btn-ghost{color:#E8EAEE;background:rgba(255,255,255,.06)}
 
-.mira-wrap{position:relative}
-#flowerMira{width:100%;max-width:420px;margin-inline:auto;display:block;filter:drop-shadow(0 18px 48px rgba(124,92,255,.35))}
-#flowerMira .petal{transform-origin:50% 50%;animation:petalSway 5.5s ease-in-out infinite}
-#flowerMira .centerPulse{animation:centerPulse 4s ease-in-out infinite}
-@keyframes petalSway{ 0%{transform:rotate(0deg)} 50%{transform:rotate(2deg)} 100%{transform:rotate(0deg)}}
-@keyframes centerPulse{ 0%,100%{opacity:.9} 50%{opacity:1}}
+.mira-wrap{position:relative;display:flex;justify-content:center}
+#flowerMira{width:min(420px,70vw);display:block;filter:drop-shadow(0 18px 48px rgba(124,92,255,.35))}
+#flowerMira .petal{transform-origin:50% 50%;animation:petalSway 6.6s ease-in-out infinite}
+#flowerMira .centerPulse{animation:centerPulse 6s ease-in-out infinite}
+@keyframes petalSway{ 0%{transform:rotate(0)} 50%{transform:rotate(2deg)} 100%{transform:rotate(0)}}
+@keyframes centerPulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
+@media (max-width:980px){ .hero-grid{grid-template-columns:1fr} .mira-wrap{order:-1} }
 
-@media (max-width: 980px){ .hero-grid{grid-template-columns:1fr} .mira-wrap{order:-1} }
-
-/* VSL + PLANET (vidljiv, pojačan) */
-.vsl-area{position:relative;margin-top:18px}
-.orb-wrap{position:relative; height:160px}
+/* VSL + planeta */
+.vsl-area{position:relative;margin-top:8px}
+.orb-wrap{position:relative;height:160px}
 .orb{
-  position:absolute; inset: -240px 0 0 0; margin:auto;
+  position:absolute; inset:-240px 0 0 0; margin:auto;
   width:min(1100px,92vw); height:min(1100px,92vw);
-  /* jači glow slojevi + prsten — VISIBILE */
   background:
     radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.65), transparent 62%),
     radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.58), transparent 66%),
     radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.26), transparent 70%);
-  filter: blur(36px) saturate(1.08);
-  opacity:.92; transform:translateZ(0); will-change:transform; z-index:0;
+  filter: blur(34px) saturate(1.06);
+  opacity:.9; transform:translateZ(0); z-index:0;
 }
 .orb:after{
   content:""; position:absolute; inset:0; border-radius:50%;
-  background: conic-gradient(from 210deg at 50% 50%, rgba(124,92,255,.0), rgba(124,92,255,.45) 18%, rgba(78,163,255,.45) 55%, rgba(124,92,255,.0) 80%);
+  background: conic-gradient(from 210deg at 50% 50%, rgba(124,92,255,0), rgba(124,92,255,.45) 18%, rgba(78,163,255,.45) 55%, rgba(124,92,255,0) 80%);
   filter:blur(18px); opacity:.95; pointer-events:none;
 }
 .vsl-shell{
-  max-width:1100px;margin:0 auto 8px;padding:10px;
-  background:rgba(255,255,255,.05);border:1px solid var(--ring);border-radius:18px;
-  box-shadow:0 32px 90px rgba(0,0,0,.65); position:relative; z-index:1;
-  transition:transform .25s ease, box-shadow .25s ease
+  max-width:1100px;margin:0 auto 10px;padding:10px;background:rgba(255,255,255,.05);
+  border:1px solid var(--ring);border-radius:18px;box-shadow:0 32px 90px rgba(0,0,0,.65);
+  position:relative; z-index:1; transition:transform .25s ease, box-shadow .25s ease
 }
 .vsl-shell:hover{transform:translateY(-2px) scale(1.01); box-shadow:0 36px 110px rgba(0,0,0,.7)}
-/* SMANJENI video: 16/7 da ne zauzima previše */
 .vsl-iframe{width:100%;aspect-ratio:16/7;height:auto;min-height:320px;border:0;border-radius:12px;background:#000}
-@media (max-width: 920px){ .orb{inset:-180px 0 0 0} .vsl-iframe{min-height:220px;aspect-ratio:16/9} }
+@media (max-width:920px){ .orb{inset:-180px 0 0 0} .vsl-iframe{min-height:220px;aspect-ratio:16/9} }
 
-/* trust badges + metrics grid */
-.trust{display:grid;grid-template-columns:repeat(12,1fr);gap:18px;margin-top:6px}
-.badge{grid-column:span 3;padding:12px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid var(--ring);color:#C7CEDA;font-weight:700;text-align:center}
-@media (max-width:920px){ .badge{grid-column:span 6} }
+/* TRUSTED BY (puni prazan prostor) */
+.trusted{display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center;margin-top:8px}
+.logo-row{display:flex;gap:22px;flex-wrap:wrap;justify-content:center}
+.logo{width:120px;height:48px;border-radius:12px;border:1px solid var(--ring);background:rgba(255,255,255,.04);
+      display:flex;align-items:center;justify-content:center;color:#C7CEDA;font-weight:800;letter-spacing:.5px;
+      transition:transform .25s ease, opacity .25s ease}
+.logo:hover{transform:translateY(-2px) scale(1.04); opacity:.95}
 
+/* KPI + cards hover */
 .kpis{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
-.kpi{grid-column:span 3;background:rgba(17,20,28,.72);border:1px solid var(--ring);border-radius:18px;padding:18px;text-align:center; transition:transform .15s}
-.kpi:hover{transform:translateY(-2px) scale(1.01)}
+.kpi{grid-column:span 3;background:rgba(17,20,28,.72);border:1px solid var(--ring);border-radius:18px;padding:18px;text-align:center; transition:transform .25s ease}
+.kpi:hover{transform:translateY(-2px) scale(1.03)}
 .kpi .num{font-size:clamp(22px,3.2vw,34px);font-weight:900;background:linear-gradient(90deg,#7C5CFF,#4EA3FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .kpi .label{color:#9AA3B2;margin-top:6px}
 
-/* Mini demo graf (SVG) sa glow trail) */
+/* grids */
+.timeline,.features{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+.ti,.f-card,.comp-card,.int-card,.t-card{background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px; transition:transform .25s ease}
+.ti:hover,.f-card:hover,.comp-card:hover,.int-card:hover,.t-card:hover{transform:translateY(-2px) scale(1.03)}
+.ti{grid-column:span 3}
+.f-card{grid-column:span 4}
+.f-title{font-weight:900;font-size:1.12rem;margin:6px 0}.f-text{color:#C7CEDA;margin:.2rem 0}
+
+/* compare */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:920px){ .compare{grid-template-columns:1fr} }
+
+/* chart wrap */
 .chart-wrap{background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px;box-shadow:0 14px 36px rgba(0,0,0,.28)}
 .legend{display:flex;gap:14px;align-items:center;color:#C7CEDA;margin-bottom:8px}.dot{width:12px;height:12px;border-radius:50%}
 .dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
 
-/* timeline / features / comparison */
-.timeline{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
-.ti{grid-column:span 3;background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px}
-.features{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
-.f-card{grid-column:span 4;background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px}
-.f-title{font-weight:900;font-size:1.12rem;margin:6px 0}.f-text{color:#C7CEDA;margin:.2rem 0}
-
-.compare{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.comp-card{background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px}
-.li{display:flex;gap:8px;align-items:flex-start;color:#C7CEDA;margin:6px 0}
-.mini-dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,#7C5CFF,#4EA3FF);margin-top:7px}
-@media (max-width:920px){ .compare{grid-template-columns:1fr} }
-
-/* testimonials / faq / integrations */
+/* testimonials / faq */
 .t-wrap{position:relative;overflow:hidden;border:1px solid var(--ring);background:#0F1219;border-radius:18px;padding:18px}
 .t-rail{display:flex;gap:18px;transition:transform .5s ease}
-.t-card{min-width:calc(33.33% - 12px);background:rgba(255,255,255,.04);border:1px solid var(--ring);border-radius:14px;padding:16px}
-.t-name{font-weight:800;margin:.4rem 0}.t-role{color:#9AA3B2;font-size:.92rem;margin:0 0 .6rem 0}
+.t-card{min-width:calc(33.33% - 12px)}
 .t-nav{position:absolute;top:50%;left:8px;right:8px;display:flex;justify-content:space-between;transform:translateY(-50%)}
-.t-btn{padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer}
+.t-btn{padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer; transition:transform .2s ease}
+.t-btn:hover{transform:scale(1.08)}
 
 .integrations{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
-.int-card{grid-column:span 3;background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px;text-align:center;color:#C7CEDA}
+.int-card{grid-column:span 3;text-align:center;color:#C7CEDA}
 @media (max-width:920px){ .int-card{grid-column:span 6} }
+
 .faq{border:1px solid var(--ring);border-radius:18px;background:#0F1219}
 .faq-item{border-top:1px solid rgba(255,255,255,.06)}
 .faq-item:first-child{border-top:none}
 .faq-q{width:100%;text-align:left;background:none;border:none;color:#E8EAEE;font-weight:800;padding:16px;cursor:pointer}
-.faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 16px;transition:max-height .35s ease,padding .35s ease}
+.faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 16px;transition:max-height .5s ease,padding .5s ease}
 
-/* Sticky CTA */
-.sticky-cta{position:fixed;left:0;right:0;bottom:16px;z-index:50;display:flex;justify-content:center;pointer-events:none;transform:translateY(110%);opacity:0;transition:transform .4s,opacity .4s}
+/* sticky cta */
+.sticky-cta{position:fixed;left:0;right:0;bottom:16px;z-index:50;display:flex;justify-content:center;pointer-events:none;transform:translateY(110%);opacity:0;transition:transform .6s,opacity .6s}
 .sticky-cta.show{transform:translateY(0);opacity:1}
 .sticky-cta .inner{pointer-events:auto;width:min(1100px,92vw);background:rgba(20,24,33,.7);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(14px) saturate(1.05);box-shadow:0 24px 60px rgba(0,0,0,.45);border-radius:18px;padding:16px 18px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
 .sticky-cta .actions{display:flex;gap:10px}.sticky-cta .btn{padding:10px 14px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring)}
@@ -382,11 +378,14 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
 <body>
 <div class="cursor-flower" id="cursorFlower"></div>
 <div class="bg-wrap"></div><div class="bg-noise"></div>
+<div class="bg-band band1 show" id="band1"></div>
+<div class="bg-band band2" id="band2"></div>
+<div class="bg-band band3" id="band3"></div>
 <div class="fog f1" id="fog1"></div><div class="fog f2" id="fog2"></div><div class="fog f3" id="fog3"></div>
 <svg class="petals" id="petals" xmlns="http://www.w3.org/2000/svg"></svg>
 
-<!-- HERO HOOK + MIRA -->
-<section class="section reveal">
+<!-- HERO -->
+<section class="section reveal band" data-band="1">
   <div class="hero-grid">
     <div class="hook">
       <div class="hook-eyebrow">MindMate • Mentalni wellness</div>
@@ -398,7 +397,6 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
       </div>
     </div>
     <div class="mira-wrap">
-      <!-- Flower Mira (SVG) -->
       <svg id="flowerMira" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flower Mira">
         <defs>
           <linearGradient id="petalG" x1="0" x2="1" y1="0" y2="1">
@@ -414,32 +412,37 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
           <path d="M145,40 C160,70 148,95 105,105 C122,84 128,60 145,40 Z" fill="url(#petalG)" opacity="0.75"/>
         </g>
         <circle class="centerPulse" cx="100" cy="110" r="12" fill="url(#coreG)"/>
-        <!-- blagi osmeh -->
         <path d="M88 128 Q100 136 112 128" stroke="#E8EAEE" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>
         <circle cx="88" cy="122" r="2.8" fill="#E8EAEE" opacity="0.9"/>
         <circle cx="112" cy="122" r="2.8" fill="#E8EAEE" opacity="0.9"/>
       </svg>
     </div>
   </div>
+
+  <!-- TRUSTED BY -->
+  <div class="trusted">
+    <div style="opacity:.9">Trusted by people from:</div>
+    <div class="logo-row">
+      <div class="logo">Health+</div>
+      <div class="logo">Calmify</div>
+      <div class="logo">WellLabs</div>
+      <div class="logo">FocusHub</div>
+      <div class="logo">MindBank</div>
+    </div>
+  </div>
 </section>
 
-<!-- VSL + PLANET GLOW (VIDLJIVO) -->
-<section class="section reveal vsl-area">
+<!-- VSL + planeta -->
+<section class="section reveal vsl-area band" data-band="2">
   <div class="orb-wrap"><div class="orb" id="orb"></div></div>
   <div class="vsl-shell">
     <iframe class="vsl-iframe" src="https://www.youtube.com/embed/1qK0c9J_h10?rel=0&modestbranding=1"
             title="MindMate VSL" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
   </div>
-  <div class="trust">
-    <div class="badge">✔️ 1000+ dnevnih check-inova</div>
-    <div class="badge">✔️ AI na srpskom</div>
-    <div class="badge">✔️ CBT/ACT/Mindfulness osnova</div>
-    <div class="badge">✔️ Privatnost & sigurnost</div>
-  </div>
 </section>
 
-<!-- KPI blok (dinamički brojevi) -->
-<section class="section reveal">
+<!-- KPI blok -->
+<section class="section reveal band" data-band="3">
   <div class="kpis" id="kpiBlock">
     <div class="kpi"><div class="num" data-target="__USERS__">0</div><div class="label">Aktivnih korisnika</div></div>
     <div class="kpi"><div class="num" data-target="__SESS__">0</div><div class="label">Ukupno sesija</div></div>
@@ -449,7 +452,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
 </section>
 
 <!-- Mini demo graf -->
-<section class="section reveal">
+<section class="section reveal band" data-band="1">
   <div class="chart-wrap">
     <div style="font-weight:900;margin:0 0 10px 0">Produktivnost & Raspoloženje (poslednje sesije)</div>
     <div class="legend"><div class="dot dot-prod"></div><div>Produktivnost</div><div class="dot dot-mood" style="margin-left:12px"></div><div>Raspoloženje</div></div>
@@ -470,7 +473,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
 </section>
 
 <!-- Kako radi -->
-<section class="section reveal">
+<section class="section reveal band" data-band="2">
   <h2 style="margin:0 0 12px 0">Kako radi MindMate?</h2>
   <div class="timeline">
     <div class="ti"><h4>1) Kratak check-in</h4><p>2 pitanja + beleška. Potpuno bez “frke”.</p></div>
@@ -480,8 +483,8 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
   </div>
 </section>
 
-<!-- Zasniva se na nauci -->
-<section class="section reveal">
+<!-- Naučna osnova -->
+<section class="section reveal band" data-band="3">
   <h2 style="margin:0 0 12px 0">Zasniva se na nauci</h2>
   <div class="features">
     <div class="f-card"><div class="f-title">CBT</div><p class="f-text">Promena obrasca misli kroz male eksperimente.</p></div>
@@ -491,26 +494,26 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
 </section>
 
 <!-- Poređenje -->
-<section class="section reveal">
+<section class="section reveal band" data-band="1">
   <h2 style="margin:0 0 12px 0">Zašto MindMate?</h2>
   <div class="compare">
     <div class="comp-card">
       <h3>Bez plana</h3>
-      <div class="li"><div class="mini-dot"></div><div>Nasumične navike, bez praćenja.</div></div>
-      <div class="li"><div class="mini-dot"></div><div>Preplavljenost, odustajanje posle par dana.</div></div>
-      <div class="li"><div class="mini-dot"></div><div>Bez jasnih trendova i povratne informacije.</div></div>
+      <div class="li"><div class="dot dot-mood" style="width:8px;height:8px"></div><div>Nasumične navike, bez praćenja.</div></div>
+      <div class="li"><div class="dot dot-mood" style="width:8px;height:8px"></div><div>Preplavljenost, odustajanje posle par dana.</div></div>
+      <div class="li"><div class="dot dot-mood" style="width:8px;height:8px"></div><div>Bez jasnih trendova i povratne informacije.</div></div>
     </div>
     <div class="comp-card">
       <h3>Sa MindMate</h3>
-      <div class="li"><div class="mini-dot"></div><div>Check-in od 2 pitanja + mikro-koraci (5–10 min).</div></div>
-      <div class="li"><div class="mini-dot"></div><div>Empatičan razgovor u tvom tonu.</div></div>
-      <div class="li"><div class="mini-dot"></div><div>Grafovi napretka i jasni obrasci.</div></div>
+      <div class="li"><div class="dot dot-prod" style="width:8px;height:8px"></div><div>Check-in od 2 pitanja + mikro-koraci (5–10 min).</div></div>
+      <div class="li"><div class="dot dot-prod" style="width:8px;height:8px"></div><div>Empatičan razgovor u tvom tonu.</div></div>
+      <div class="li"><div class="dot dot-prod" style="width:8px;height:8px"></div><div>Grafovi napretka i jasni obrasci.</div></div>
     </div>
   </div>
 </section>
 
 <!-- Integracije / Trust -->
-<section class="section reveal">
+<section class="section reveal band" data-band="2">
   <h2 style="margin:0 0 12px 0">Privatnost & Integracije</h2>
   <div class="integrations">
     <div class="int-card">🔒 Lokalno čuvanje podataka (MVP)</div>
@@ -521,21 +524,20 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
 </section>
 
 <!-- Testimonials -->
-<section class="section reveal">
+<section class="section reveal band" data-band="3">
   <div class="t-wrap">
     <div class="t-rail" id="tRail">
       <div class="t-card"><div class="t-name">Mila</div><div class="t-role">28 • Beograd</div><div>“Check-in me drži u ritmu. 5 minuta i osećam pomak.”</div></div>
       <div class="t-card"><div class="t-name">Nikola</div><div class="t-role">31 • Novi Sad</div><div>“Sviđa mi se što je sve na srpskom i u mom fazonu.”</div></div>
       <div class="t-card"><div class="t-name">Sara</div><div class="t-role">24 • Niš</div><div>“Grafovi mi jasno pokažu kada padam i zašto.”</div></div>
       <div class="t-card"><div class="t-name">Vuk</div><div class="t-role">35 • Kragujevac</div><div>“Nije terapija, ali je odličan dnevni alat.”</div></div>
-      <div class="t-card"><div class="t-name">Ana</div><div class="t-role">29 • Subotica</div><div>“Mini-navike su pogodile — taman koliko mogu.”</div></div>
     </div>
     <div class="t-nav"><div class="t-btn" id="tPrev">◀</div><div class="t-btn" id="tNext">▶</div></div>
   </div>
 </section>
 
 <!-- FAQ -->
-<section class="section reveal">
+<section class="section reveal band" data-band="1">
   <div class="faq" id="faq">
     <div class="faq-item"><button class="faq-q">Da li je MindMate zamena za terapiju?</button>
       <div class="faq-a">Ne. Nije medicinski alat. Ako si u riziku — pozovi 112 i potraži stručnu pomoć.</div></div>
@@ -565,7 +567,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
 // ===== Cursor + ripple =====
 const flower=document.getElementById('cursorFlower');
 document.addEventListener('mousemove',(e)=>{ flower.style.left=e.clientX+'px'; flower.style.top=e.clientY+'px'; });
-document.querySelectorAll('a,.btn').forEach(el=>{
+document.querySelectorAll('a,.btn,.t-btn,.ti,.f-card,.comp-card,.int-card,.t-card,.logo').forEach(el=>{
   el.addEventListener('mouseenter',()=>flower.classList.add('cursor-boost'));
   el.addEventListener('mouseleave',()=>flower.classList.remove('cursor-boost'));
 });
@@ -573,17 +575,33 @@ document.addEventListener('click', function(e){
   const b=e.target.closest('.fx-ripple'); if(!b) return;
   const r=document.createElement('span'); r.className='ink';
   const rect=b.getBoundingClientRect(); const size=Math.max(rect.width, rect.height);
-  r.style.position='absolute'; r.style.borderRadius='50%'; r.style.background='rgba(255,255,255,.45)';
-  r.style.width=r.style.height=size+'px'; r.style.left=(e.clientX-rect.left-size/2)+'px'; r.style.top=(e.clientY-rect.top-size/2)+'px';
-  r.style.transform='scale(0)'; r.style.animation='ripple .6s linear';
-  b.appendChild(r); setTimeout(()=>r.remove(),600);
+  Object.assign(r.style,{position:'absolute',borderRadius:'50%',background:'rgba(255,255,255,.45)',
+    width:size+'px',height:size+'px',left:(e.clientX-rect.left-size/2)+'px',top:(e.clientY-rect.top-size/2)+'px',
+    transform:'scale(0)',animation:'ripple .7s linear'});
+  b.appendChild(r); setTimeout(()=>r.remove(),700);
 }, {passive:true});
 
-// ===== Reveal on scroll =====
-const io=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting)x.target.classList.add('visible')}),{threshold:.18});
+// ===== Reveal on scroll (sporije) =====
+const io=new IntersectionObserver(es=>es.forEach((x,i)=>{
+  if(x.isIntersecting){
+    setTimeout(()=>x.target.classList.add('visible'), 120); // blagi delay
+  }
+}),{threshold:.18});
 document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 
-// ===== Global falling petals (lagano) =====
+// ===== Background band switching =====
+const b1=document.getElementById('band1'), b2=document.getElementById('band2'), b3=document.getElementById('band3');
+const bands=[b1,b2,b3];
+const bo=new IntersectionObserver(es=>{
+  es.forEach(en=>{
+    if(!en.isIntersecting) return;
+    const band = en.target.getAttribute('data-band');
+    bands.forEach((b,i)=>b.classList.toggle('show', (i+1)==band));
+  });
+},{threshold:.5});
+document.querySelectorAll('.band').forEach(s=>bo.observe(s));
+
+// ===== Global petals (lagano) =====
 const svgNS="http://www.w3.org/2000/svg"; const petals=document.getElementById('petals');
 function addPetal(scale, opacity, durMin, durMax){
   const s=(12+Math.random()*22)*scale;
@@ -605,17 +623,17 @@ function addPetal(scale, opacity, durMin, durMax){
                     {transform:`translate(${x+drift}px, ${window.innerHeight+60}px) scale(${s/42}) rotate(${rot+360}deg)`}];
   g.animate(kyframes,{duration:dur,easing:'linear'}); setTimeout(()=>g.remove(), dur);
 }
-for(let i=0;i<20;i++) addPetal(1, .70, 6500, 9500);
-setInterval(()=>addPetal(1.0, .70, 7000, 11000), 900);
+for(let i=0;i<16;i++) addPetal(1, .65, 7000, 11000);
+setInterval(()=>addPetal(1.0, .62, 8000, 13000), 1000);
 
 // ===== KPI count-up =====
-function countUp(el){const t=parseInt(el.getAttribute('data-target'))||0,d=1400,s=performance.now();
+function countUp(el){const t=parseInt(el.getAttribute('data-target'))||0,d=1600,s=performance.now();
   function tick(now){const p=Math.min((now-s)/d,1);el.textContent=Math.floor(t*(.1+.9*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)}
   requestAnimationFrame(tick)}
 const kio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.num').forEach(countUp);kio.unobserve(x.target)}})},{threshold:.35});
 document.querySelectorAll('#kpiBlock').forEach(el=>kio.observe(el));
 
-// ===== Mini demo graf (SVG path + labels + glow trails) =====
+// ===== Chart (SVG) =====
 const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=360,P=48,ymin=0,ymax=100;
 const grid=document.getElementById('grid'), xg=document.getElementById('xlabels'), svg=document.getElementById('mmChart');
 for(let i=0;i<=5;i++){const y=P+(H-2*P)*(i/5), l=document.createElementNS("http://www.w3.org/2000/svg","line");
@@ -630,11 +648,11 @@ const prodGlow=document.getElementById('prodGlow'), moodGlow=document.getElement
 const d1=path(prod), d2=path(mood);
 prodGlow.setAttribute("d",d1); moodGlow.setAttribute("d",d2);
 prodPath.setAttribute("d",d1); moodPath.setAttribute("d",d2);
-function strokeAnim(p,d=1600){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
-const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){strokeAnim(prodPath,1400);setTimeout(()=>strokeAnim(moodPath,1600),200);cio.unobserve(svg)}})},{threshold:.3});
+function strokeAnim(p,d=1800){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
+const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){strokeAnim(prodPath,1700);setTimeout(()=>strokeAnim(moodPath,1900),200);cio.unobserve(svg)}})},{threshold:.3});
 cio.observe(svg);
 
-// ===== Testimonials carousel =====
+// ===== Testimonials carousel (hover scale fix već u CSS) =====
 (function(){const rail=document.getElementById('tRail');if(!rail) return; let i=0;
   const cards=rail.children.length; function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+18)}px)`;}
   document.getElementById('tPrev').onclick=()=>go(-1); document.getElementById('tNext').onclick=()=>go(1);
@@ -658,13 +676,6 @@ addEventListener('scroll',chk,{passive:true}); addEventListener('resize',chk,{pa
 def render_landing():
     users, sessions, sat, avg_minutes, streaks, retention, nps = compute_metrics()
     labels, prod, mood = compute_trend_series()
-    quotes = [
-        "Mali koraci, veliki pomaci.",
-        "Danas bolje nego juče, sutra bolje nego danas.",
-        "Ne moraš sve — dovoljno je malo, ali svaki dan.",
-        "Disanje. Fokus. Jedan korak napred.",
-        "Kad ne ide — budi blag/a prema sebi."
-    ]
     html = (LANDING_TEMPLATE
             .replace("__SESS__", str(max(sessions,0)))
             .replace("__USERS__", str(max(users,1)))
@@ -672,10 +683,8 @@ def render_landing():
             .replace("__RET__", str(max(min(retention,100),0)))
             .replace("__X_LABELS__", json.dumps(labels))
             .replace("__P_SERIES__", json.dumps(prod))
-            .replace("__M_SERIES__", json.dumps(mood))
-            )
-    # dovoljno visoko da planeta + sekcije stanu bez seckanja
-    st_html(html, height=5600, width=1280, scrolling=True)
+            .replace("__M_SERIES__", json.dumps(mood)))
+    st_html(html, height=6200, width=1280, scrolling=True)
 
 # ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
