@@ -1,12 +1,12 @@
-# mindmate_app_v41.py — Premium landing + cele sekcije + Plotly fallback
-# Uključeno: 3D mozak (Three.js), falling petals (SVG), parallax fog, ripple, flower cursor, sticky CTA
+# mindmate_app_v41.py — Premium landing + sve sekcije + JSON "baza" (nema TinyDB)
+# Uključeno: 3D mozak (Three.js), SVG latice, parallax fog, ripple, flower cursor, sticky CTA
 # Sekcije: trust, steps, features, improve+progress, KPI, animirani SVG graf, testimonials, FAQ, pricing
-# Plotly je opcioni; ako nije instaliran, koristi se Streamlit line_chart
+# Chat (Ollama ili OpenAI), Check-in, Analitika (Plotly opcioni -> fallback na Streamlit line_chart)
+# Radi odmah na Streamlit Cloud (bez dodatnog pip install), jer koristimo lokalni JSON za podatke.
 
-import os, json, requests, math
+import os, json, requests, math, io
 import streamlit as st
 from datetime import datetime, date, timedelta
-from tinydb import TinyDB, Query
 from streamlit.components.v1 import html as st_html
 
 # Plotly je opcioni: koristimo ga ako postoji, inače fallback
@@ -18,7 +18,7 @@ except Exception:
     px = None
 
 APP_TITLE = "MindMate"
-DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")
+DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")  # JSON datoteka
 
 # Chat backend env
 CHAT_PROVIDER = os.environ.get("CHAT_PROVIDER", "ollama").lower().strip()
@@ -33,7 +33,7 @@ def safe_rerun():
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 
-# Globalni stil okvira
+# ---------- Globalni stil okvira ----------
 st.markdown("""
 <style>
 .main .block-container{
@@ -48,36 +48,77 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ====== DB ======
-db = TinyDB(DB_PATH)
-TCheckins = db.table("checkins")
-TChats    = db.table("chat_events")
-Q         = Query()
+# ---------- "Baza" preko JSON-a ----------
+def _init_db():
+    if not os.path.exists(DB_PATH):
+        with open(DB_PATH, "w", encoding="utf-8") as f:
+            json.dump({"checkins": [], "chat_events": []}, f)
+    # Robustno čitanje
+    try:
+        with open(DB_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            data = {"checkins": [], "chat_events": []}
+        data.setdefault("checkins", [])
+        data.setdefault("chat_events", [])
+        return data
+    except Exception:
+        return {"checkins": [], "chat_events": []}
 
+def _save_db(db):
+    try:
+        with open(DB_PATH, "w", encoding="utf-8") as f:
+            json.dump(db, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # na Streamlitu nekad je read-only; ignorisati, app radi u memoriji
+
+# Keširana "baza" u sesiji (radi i bez pisanja na disk)
+if "DB_CACHE" not in st.session_state:
+    st.session_state.DB_CACHE = _init_db()
+
+def _get_db():
+    return st.session_state.DB_CACHE
+
+def _persist_db():
+    _save_db(st.session_state.DB_CACHE)
+
+# ---------- Helpers nad JSON "bazom" ----------
 def get_or_create_uid():
     if "uid" not in st.session_state:
         st.session_state.uid = f"user_{int(datetime.utcnow().timestamp())}"
     return st.session_state.uid
 
 def save_checkin(uid, phq1, phq2, gad1, gad2, notes=""):
-    TCheckins.insert({
-        "uid":uid,"ts":datetime.utcnow().isoformat(),"date":date.today().isoformat(),
-        "phq1":int(phq1),"phq2":int(phq2),"gad1":int(gad1),"gad2":int(gad2),"notes":notes or ""
+    db = _get_db()
+    db["checkins"].append({
+        "uid": uid,
+        "ts": datetime.utcnow().isoformat(),
+        "date": date.today().isoformat(),
+        "phq1": int(phq1), "phq2": int(phq2),
+        "gad1": int(gad1), "gad2": int(gad2),
+        "notes": notes or ""
     })
+    _persist_db()
 
 def save_chat_event(uid, role, content):
-    TChats.insert({
-        "uid":uid,"ts":datetime.utcnow().isoformat(),"role":role,"content":(content or "")[:4000]
+    db = _get_db()
+    db["chat_events"].append({
+        "uid": uid,
+        "ts": datetime.utcnow().isoformat(),
+        "role": role,
+        "content": (content or "")[:4000]
     })
+    _persist_db()
 
 def compute_metrics():
-    uids = set([r.get("uid","") for r in TCheckins.all()] + [r.get("uid","") for r in TChats.all()])
+    db = _get_db()
+    uids = set([r.get("uid","") for r in db["checkins"]] + [r.get("uid","") for r in db["chat_events"]])
     uids.discard("")
     users = len(uids) or 1
-    sessions = len(TChats.search(Q.role=="user"))
+    sessions = sum(1 for r in db["chat_events"] if r.get("role")=="user")
     cutoff = datetime.utcnow()-timedelta(days=30)
     recent = []
-    for r in TCheckins.all():
+    for r in db["checkins"]:
         try:
             dt = datetime.fromisoformat(r.get("ts",""))
         except Exception:
@@ -91,7 +132,8 @@ def compute_metrics():
     return users, sessions, sat
 
 def compute_trend_series():
-    rows = sorted(TCheckins.all(), key=lambda r:(r.get("date",""), r.get("ts","")))[-12:]
+    db = _get_db()
+    rows = sorted(db["checkins"], key=lambda r:(r.get("date",""), r.get("ts","")))[-12:]
     labels, prod, mood = [], [], []
     if rows:
         for i,r in enumerate(rows):
@@ -110,12 +152,13 @@ def compute_trend_series():
     return labels, prod, mood
 
 def current_month_progress():
+    db = _get_db()
     today=date.today(); start=today.replace(day=1).isoformat()
-    count=len([r for r in TCheckins.all() if (r.get("date") or "")>=start]); goal=20
+    count=len([r for r in db["checkins"] if (r.get("date") or "")>=start]); goal=20
     pct=min(100,int(100*count/max(goal,1)))
     return pct, count, goal
 
-# ====== Chat backends ======
+# ---------- Chat backends ----------
 def chat_ollama(messages):
     try:
         r = requests.post(f"{OLLAMA_HOST}/api/chat",
@@ -164,12 +207,12 @@ SYSTEM_PROMPT = (
     "Daj mikro-korake (5–10min) i traži kratke update-e."
 )
 
-# ====== Router state ======
+# ---------- Router state ----------
 if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ====== NAVBAR ======
+# ---------- NAVBAR ----------
 st.markdown("""
 <style>
 .mm-navwrap{position:sticky;top:0;z-index:9;background:rgba(17,20,28,.55);backdrop-filter:blur(12px);
@@ -199,7 +242,7 @@ elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# ====== LANDING (sa svim sekcijama + efektima) ======
+# ---------- LANDING TEMPLATE (sve sekcije + efekti) ----------
 LANDING_TEMPLATE = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -699,7 +742,7 @@ def render_landing():
             )
     st_html(html, height=3600, width=1280, scrolling=True)
 
-# ====== HOME / CHAT / CHECKIN / ANALYTICS ======
+# ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
     st.markdown("### Tvoja kontrolna tabla")
     c1,c2,c3=st.columns(3)
@@ -745,7 +788,7 @@ def render_checkin():
 
 def render_analytics():
     st.subheader("📈 Analitika")
-    rows=sorted(TCheckins.all(), key=lambda r:r.get("date",""))
+    rows=sorted(_get_db()["checkins"], key=lambda r:r.get("date",""))
     if not rows:
         st.info("Još nema podataka. Uradi prvi check-in.")
         return
@@ -763,7 +806,7 @@ def render_analytics():
         st.info("Prikaz je preko Streamlit line_chart jer Plotly nije instaliran. "
                 "Za bogatiji graf instaliraj: pip install plotly")
 
-# Router
+# ---------- Router ----------
 page=st.session_state.page
 if page=="landing": render_landing()
 elif page=="home": render_home()
@@ -772,3 +815,4 @@ elif page=="checkin": render_checkin()
 elif page=="analytics": render_analytics()
 
 st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:18px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
+
