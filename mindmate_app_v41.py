@@ -1,15 +1,12 @@
-# app.py — MindMate compact landing (Loadhunter-style structure)
-# - Kompaktan layout bez praznina; jasni prelazi sekcija
-# - Hero + Flower Mira, manji VSL sa vidljivom planetom odmah ispod
-# - Trusted by, Benefiti, Poređenje, Mini graf (SVG), KPI, Integracije,
-#   Testimonijali, FAQ, Sticky CTA
+# app.py — MindMate compact landing + upgraded FAQ (full-height + animations)
+# - Kompaktan layout; planet orb vidljiv; “Trusted by”; benefiti; poređenje;
+#   mini graf (SVG); KPI; integracije; testovi; NOVI FAQ (clouds + full expand)
 # - Početna/Chat/Check-in/Analitika (Plotly)
 
 import os, json, requests, math
 import streamlit as st
 from datetime import datetime, date, timedelta
 from streamlit.components.v1 import html as st_html
-
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -35,7 +32,6 @@ st.markdown("""
 :root{
   --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2;
   --g1:#7C5CFF; --g2:#4EA3FF; --ring:rgba(255,255,255,.10);
-  --space-xl:64px; --space-lg:48px; --space-md:32px; --space-sm:20px;
 }
 html,body{background:var(--bg); color:var(--ink)}
 .main .block-container{
@@ -116,7 +112,11 @@ def compute_metrics():
     users = len(uids) or 1
     sessions = sum(1 for r in db["chat_events"] if r.get("role")=="user")
     cutoff = datetime.utcnow()-timedelta(days=30)
-    recent = [r for r in db["checkins"] if (datetime.fromisoformat(r.get("ts","").split("+")[0] or datetime.utcnow().isoformat()) >= cutoff)]
+    recent = []
+    for r in db["checkins"]:
+        try: dt = datetime.fromisoformat(r.get("ts","").split("+")[0])
+        except Exception: dt = datetime.utcnow()
+        if dt>=cutoff: recent.append(r)
     if recent:
         good=sum(1 for r in recent if (int(r.get("phq1",0))+int(r.get("phq2",0))+int(r.get("gad1",0))+int(r.get("gad2",0)))<=3)
         sat = int(round(100*good/len(recent)))
@@ -220,27 +220,23 @@ elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# ---------- LANDING (kompaktno) ----------
+# ---------- LANDING (kompaktno + novi FAQ) ----------
 LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <style>
 :root{
   --bg:#0B0D12; --ink:#E8EAEE; --mut:#9AA3B2; --ring:rgba(255,255,255,.10);
-  --g1:#7C5CFF; --g2:#4EA3FF;
-  --W:max(92vw,320px); --MAX:1180px;
+  --g1:#7C5CFF; --g2:#4EA3FF; --MAX:1180px;
   --s-xl:64px; --s-lg:48px; --s-md:32px; --s-sm:20px;
 }
 *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
-
-/* Shared */
-.container{width:min(var(--MAX),var(--W));margin:0 auto}
-.section{padding-block:var(--s-lg)}
-.section.tight{padding-block:var(--s-md)}
+.container{width:min(var(--MAX),92vw);margin:0 auto}
+.section{padding-block:var(--s-lg)} .section.tight{padding-block:var(--s-md)}
 .h2{font-size:clamp(22px,2.6vw,30px);margin:0 0 12px 0}
 .grid-12{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
-.card{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px;transition:transform .2s ease}
-.card:hover{transform:translateY(-2px) scale(1.03)}
+.card{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px;transition:transform .2s ease, box-shadow .2s ease}
+.card:hover{transform:translateY(-2px) scale(1.03); box-shadow:0 14px 48px rgba(0,0,0,.35)}
 .btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .2s ease}
 .btn:hover{transform:translateY(-1px) scale(1.03)}
 .btn-primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
@@ -261,7 +257,7 @@ LANDING = """
 @keyframes sway{ 0%{transform:rotate(0)} 50%{transform:rotate(2.2deg)} 100%{transform:rotate(0)}}
 @keyframes pulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
 
-/* VSL + planeta (kompaktno) */
+/* VSL + orb */
 .vsl-area{position:relative}
 .orb-wrap{position:relative;height:90px}
 .orb{
@@ -271,13 +267,14 @@ LANDING = """
     radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.55), transparent 62%),
     radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.50), transparent 66%),
     radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.22), transparent 70%);
-  filter: blur(28px) saturate(1.05); opacity:.9;
+  filter: blur(28px) saturate(1.05); opacity:.9; animation:orbBreath 12s ease-in-out infinite;
 }
+@keyframes orbBreath{0%,100%{transform:scale(1)} 50%{transform:scale(1.04)}}
 .vsl{position:relative;z-index:1;max-width:980px;margin:0 auto;border-radius:16px;border:1px solid var(--ring);padding:10px;background:rgba(255,255,255,.05);box-shadow:0 28px 90px rgba(0,0,0,.65)}
 .vsl iframe{width:100%;aspect-ratio:16/9;height:auto;min-height:240px;border:0;border-radius:10px}
 
 /* Trusted by */
-.trusted{display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:10px}
+.trusted{display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px}
 .logos{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
 .logo{width:110px;height:42px;border-radius:12px;border:1px solid var(--ring);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;color:#C7CEDA;font-weight:800;letter-spacing:.4px;transition:transform .2s}
 .logo:hover{transform:translateY(-2px)}
@@ -295,7 +292,7 @@ LANDING = """
 .legend{display:flex;gap:12px;align-items:center;color:#C7CEDA;margin-bottom:6px}.dot{width:12px;height:12px;border-radius:50%}
 .dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
 
-/* KPI 4-up */
+/* KPI */
 .kpis .card{grid-column:span 3;text-align:center}
 .knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .kcap{color:var(--mut)}
@@ -312,17 +309,41 @@ LANDING = """
 .tbtn{padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:transform .18s}
 .tbtn:hover{transform:scale(1.06)}
 
-/* FAQ */
-.faq{border:1px solid var(--ring);border-radius:16px;background:#0F1219}
-.faq-item{border-top:1px solid rgba(255,255,255,.06)} .faq-item:first-child{border-top:none}
-.faq-q{width:100%;text-align:left;background:none;border:none;color:#E8EAEE;font-weight:800;padding:14px;cursor:pointer}
-.faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 14px;transition:max-height .45s ease,padding .45s ease}
+/* ===== NEW FAQ (big, clouds, full expand) ===== */
+.faq-zone{position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--ring);background:linear-gradient(180deg,#0F1219, #0E131A 55%, #0C1016)}
+.faq-clouds:before, .faq-clouds:after{
+  content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
+  background:
+    radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
+    radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
+    radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
+  filter:blur(12px); opacity:.7; animation:cloudFloat 26s linear infinite;
+}
+.faq-clouds:after{ inset:auto -25% -45% -25%; animation-duration:32s; opacity:.55 }
+@keyframes cloudFloat{0%{transform:translateX(-6%)} 50%{transform:translateX(6%)} 100%{transform:translateX(-6%)}}
 
-/* Animations (suptilno) */
+.faq-header{text-align:center; padding:28px 16px 10px}
+.badge{display:inline-flex;gap:6px;align-items:center;color:#C7CEDA;font-size:13px;padding:7px 12px;border:1px solid var(--ring);border-radius:999px;background:rgba(255,255,255,.05)}
+.faq-title{font-size:clamp(26px,4.2vw,44px);margin:8px 0 6px 0}
+.faq-sub{color:#A7B0BE;max-width:860px;margin:0 auto 18px}
+
+.faq{max-width:920px;margin:0 auto 26px;background:transparent;border:0}
+.faq-item{border:1px solid var(--ring);border-radius:14px;background:#0F1219;margin:12px 0;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.25); transition:transform .18s ease, box-shadow .18s ease}
+.faq-item:hover{transform:translateY(-1px); box-shadow:0 14px 36px rgba(0,0,0,.33)}
+.faq-q{width:100%;text-align:left;background:none;border:none;color:#E8EAEE;font-weight:800;padding:18px 18px;cursor:pointer; display:flex; align-items:center; justify-content:space-between}
+.faq-q .txt{pointer-events:none}
+.chev{width:22px;height:22px;border-radius:6px;border:1px solid var(--ring);display:grid;place-items:center;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.chev svg{width:12px;height:12px}
+.faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 18px;transition:max-height .42s cubic-bezier(.2,.8,.2,1), padding .42s cubic-bezier(.2,.8,.2,1)}
+.faq-a.open{padding:12px 18px 18px}
+.contact-mini{display:flex;align-items:center;justify-content:center;gap:10px;color:#C7CEDA;padding:8px 0 18px}
+
+/* Reveal */
 .reveal{opacity:0;transform:translateY(20px);transition:opacity 1.2s ease, transform 1.2s ease}
 .reveal.v{opacity:1;transform:translateY(0)}
 
 .footer{color:#9AA3B2;text-align:center;padding:16px 0 22px}
+@media (max-width:900px){ .hero-grid{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -357,12 +378,12 @@ LANDING = """
   </div>
 </section>
 
-<!-- VSL + planeta (kompaktno), pa Trusted by -->
+<!-- VSL + planeta + Trusted by -->
 <section class="section tight vsl-area">
   <div class="container reveal">
     <div class="orb-wrap"><div class="orb"></div></div>
     <div class="vsl"><iframe src="https://www.youtube.com/embed/1qK0c9J_h10?rel=0&modestbranding=1" title="MindMate VSL" allowfullscreen></iframe></div>
-    <div class="trusted" style="margin-top:14px">
+    <div class="trusted">
       <div style="opacity:.9">Trusted by people from:</div>
       <div class="logos">
         <div class="logo">Health+</div><div class="logo">Calmify</div><div class="logo">WellLabs</div>
@@ -372,7 +393,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- 3 benefita -->
+<!-- Benefiti -->
 <section class="section tight">
   <div class="container">
     <h2 class="h2">Zašto početi danas</h2>
@@ -457,17 +478,50 @@ LANDING = """
   </div>
 </section>
 
-<!-- FAQ -->
-<section class="section tight">
-  <div class="container reveal">
-    <div class="faq" id="faq">
-      <div class="faq-item"><button class="faq-q">Da li je MindMate zamena za terapiju?</button>
-        <div class="faq-a">Ne. Nije medicinski alat. Ako si u riziku — pozovi 112 i potraži stručnu pomoć.</div></div>
-      <div class="faq-item"><button class="faq-q">Koliko vremena mi treba dnevno?</button>
-        <div class="faq-a">Obično 3–5 minuta. Dovoljno da zadržiš momentum bez preplavljivanja.</div></div>
-      <div class="faq-item"><button class="faq-q">Kako čuvate privatnost?</button>
-        <div class="faq-a">Podaci su lokalno u okviru app-a za MVP; bez deljenja. Uvek možeš obrisati istoriju.</div></div>
+<!-- ===== BIG FAQ with clouds ===== -->
+<section class="section">
+  <div class="container faq-zone faq-clouds reveal">
+    <div class="faq-header">
+      <div class="badge">❓ Česta pitanja</div>
+      <h3 class="faq-title">Pitanja? Odgovori!</h3>
+      <div class="faq-sub">Brzi odgovori na najčešća pitanja o MindMate platformi.</div>
     </div>
+
+    <div class="faq" id="faq">
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Da li je MindMate zamena za terapiju?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Ne. MindMate nije medicinski alat niti zamena za terapiju. Ako postoji rizik — pozovi 112 i potraži stručnu pomoć.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Koliko vremena mi treba dnevno?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Obično 3–5 minuta: 2 pitanja za check-in i jedan mali mikro-korak (5–10 min) kada želiš da dodaš momentum.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Kako čuvate privatnost?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Za MVP, podaci ostaju lokalno u okviru aplikacije i mogu se obrisati u bilo kom trenutku. Nema deljenja sa trećim stranama.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Da li radi na telefonu i računaru?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Da. Interfejs je responzivan i prilagođava se tvojoj rezoluciji (desktop, tablet, telefon).</div>
+      </div>
+    </div>
+
+    <div class="contact-mini">📧 Imaš pitanje? Piši: <span style="font-weight:700;margin-left:6px">hello@mindmate.app</span></div>
   </div>
 </section>
 
@@ -510,11 +564,26 @@ cio.observe(svg);
 function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+16)}px)`;}
 document.getElementById('prev').onclick=()=>go(-1); document.getElementById('next').onclick=()=>go(1);})();
 
-// FAQ toggle
-document.querySelectorAll('.faq-q').forEach(q=>q.addEventListener('click',()=>{
-  const a=q.parentElement.querySelector('.faq-a'); const open=a.style.maxHeight && a.style.maxHeight!=='0px';
-  a.style.maxHeight=open?'0':a.scrollHeight+'px'; a.style.padding=open?'0 14px':'10px 14px';
-}));
+// ===== FAQ logic: full-height expand + chevron rotate =====
+document.querySelectorAll('.faq-item').forEach(item=>{
+  const btn=item.querySelector('.faq-q');
+  const chev=item.querySelector('.chev');
+  const panel=item.querySelector('.faq-a');
+  btn.addEventListener('click',()=>{
+    const open = btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded', String(!open));
+    // rotate chevron
+    chev.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
+    // animate height to full content
+    if(open){
+      panel.style.maxHeight = panel.scrollHeight + 'px'; // set to current for smooth collapse
+      requestAnimationFrame(()=>{ panel.style.maxHeight = '0px'; panel.classList.remove('open'); });
+    }else{
+      panel.classList.add('open');
+      panel.style.maxHeight = panel.scrollHeight + 'px';
+    }
+  });
+});
 </script>
 </body></html>
 """
@@ -530,8 +599,7 @@ def render_landing():
             .replace("__X_LABELS__", json.dumps(labels))
             .replace("__P_SERIES__", json.dumps(prod))
             .replace("__M_SERIES__", json.dumps(mood)))
-    # visina je manja jer je sve zbijeno
-    st_html(html, height=4200, width=1280, scrolling=True)
+    st_html(html, height=4600, width=1280, scrolling=True)
 
 # ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
