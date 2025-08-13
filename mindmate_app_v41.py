@@ -1,5 +1,4 @@
-# app.py — MindMate (Landing + Kendo-style NAV + VSL orb + Chart + FAQ + Pricing)
-# Streamlit single-file app
+# app.py — MindMate landing + BIG FAQ + PRICING (Free/Pro) + Početna/Chat/Check-in/Analitika
 
 import os, json, requests, math
 import streamlit as st
@@ -28,16 +27,16 @@ st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 st.markdown("""
 <style>
 :root{
-  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2; --ring:rgba(255,255,255,.10);
-  --g1:#7C5CFF; --g2:#4EA3FF;
+  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2;
+  --g1:#7C5CFF; --g2:#4EA3FF; --ring:rgba(255,255,255,.10);
 }
 html,body{background:var(--bg); color:var(--ink)}
 .main .block-container{
-  padding-top:3.2rem!important; padding-left:2rem!important; padding-right:2rem!important;
+  padding-top:.6rem!important; padding-left:2rem!important; padding-right:2rem!important;
   max-width:1280px!important; margin-inline:auto!important;
 }
 @media (max-width:900px){
-  .main .block-container{padding-left:1.1rem!important; padding-right:1.1rem!important}
+  .main .block-container{padding-left:1.2rem!important; padding-right:1.2rem!important}
 }
 .element-container > div:has(> iframe){display:flex; justify-content:center;}
 .stButton>button[kind="primary"]{
@@ -112,7 +111,7 @@ def compute_metrics():
     cutoff = datetime.utcnow()-timedelta(days=30)
     recent = []
     for r in db["checkins"]:
-        try: dt = datetime.fromisoformat((r.get("ts","") or "").split("+")[0])
+        try: dt = datetime.fromisoformat(r.get("ts","").split("+")[0])
         except Exception: dt = datetime.utcnow()
         if dt>=cutoff: recent.append(r)
     if recent:
@@ -187,6 +186,30 @@ if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
+# ---------- NAV ----------
+st.markdown("""
+<style>
+.mm-navwrap{position:sticky;top:0;z-index:9;background:rgba(17,20,28,.65);backdrop-filter:blur(10px);
+             border-bottom:1px solid var(--ring)}
+.mm-nav{max-width:1180px;margin:0 auto;padding:10px 6px;display:flex;align-items:center;justify-content:space-between}
+.mm-brand{display:flex;align-items:center;gap:10px;font-weight:900;color:#E8EAEE}
+.mm-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));
+        box-shadow:0 0 12px rgba(124,92,255,.7)}
+.mm-links{display:flex;gap:8px;flex-wrap:wrap}
+.mm-links a{text-decoration:none;color:#E8EAEE;font-weight:700;padding:8px 11px;border:1px solid var(--ring);
+            border-radius:12px;background:rgba(255,255,255,.02);transition:transform .18s ease}
+.mm-links a:hover{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.03)}
+@media (max-width:720px){ .mm-links a{padding:6px 9px} }
+</style>
+<div class="mm-navwrap"><div class="mm-nav">
+  <div class="mm-brand"><div class="mm-dot"></div><div>MindMate</div></div>
+  <div class="mm-links">
+    <a href="?landing">Welcome</a><a href="?home">Početna</a><a href="?chat">Chat</a>
+    <a href="?checkin">Check-in</a><a href="?analytics">Analitika</a>
+  </div>
+</div></div>
+""", unsafe_allow_html=True)
+
 qp=st.query_params
 if   "landing"  in qp: st.session_state.page="landing"
 elif "home"     in qp: st.session_state.page="home"
@@ -194,77 +217,7 @@ elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# ===== Kendo-style NAV (sticky, shrink, hide-on-down, show-on-up, active underline, progress bar)
-page_active = st.session_state.page
-def _active(p): return "active" if page_active==p else ""
-
-NAV_HTML = f"""
-<style>
-.k-nav-wrap{{position:fixed;left:0;right:0;top:0;z-index:1000}}
-.k-progress{{position:fixed;left:0;top:0;height:2.5px;background:linear-gradient(90deg,var(--g1),var(--g2));width:0%;z-index:1100}}
-.k-nav{{width:min(1180px,96vw);margin:10px auto;padding:12px 12px;border-radius:16px;
-       display:flex;align-items:center;justify-content:space-between;
-       background:rgba(16,20,27,.55);backdrop-filter:blur(10px);
-       border:1px solid var(--ring);box-shadow:0 8px 24px rgba(0,0,0,.35);
-       transition:transform .28s ease, padding .28s ease, background .28s ease, box-shadow .28s ease}}
-.k-nav.shrink{{padding:6px 10px;border-radius:14px;background:rgba(16,20,27,.7)}}
-.k-nav.hide{{transform:translateY(-120%)}}
-.k-brand{{display:flex;align-items:center;gap:10px;font-weight:900}}
-.k-dot{{width:10px;height:10px;border-radius:50%;
-        background:radial-gradient(circle at 30% 30%,#8F78FF,#4EA3FF); box-shadow:0 0 16px rgba(124,92,255,.8)}}
-.k-links{{display:flex;gap:8px;flex-wrap:wrap}}
-.k-links a{{--pad:9px; position:relative; padding:9px 14px; border-radius:12px; text-decoration:none; color:#E8EAEE;
-           font-weight:800; border:1px solid var(--ring); background:rgba(255,255,255,.03);
-           transition:transform .18s ease, border-color .18s ease, background .18s ease}}
-.k-links a:hover{{transform:translateY(-1px) scale(1.03); border-color:rgba(255,255,255,.18); background:rgba(255,255,255,.05)}}
-.k-links a .u{{position:absolute;left:10px;right:10px;bottom:6px;height:2px;border-radius:2px;
-               background:linear-gradient(90deg,var(--g1),var(--g2)); transform:scaleX(0);
-               transform-origin:left; transition:transform .25s cubic-bezier(.2,.8,.2,1)}}
-.k-links a.active .u{{transform:scaleX(1)}}
-@media (max-width:720px){
-  .k-nav{{margin:6px auto}}
-  .k-links a{{padding:7px 10px}}
-}
-</style>
-<div class="k-progress" id="kProgress"></div>
-<div class="k-nav-wrap">
-  <div class="k-nav" id="kNav">
-    <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
-    <div class="k-links">
-      <a href="?landing"  class="{_active('landing')}">Welcome<span class="u"></span></a>
-      <a href="?home"     class="{_active('home')}">Početna<span class="u"></span></a>
-      <a href="?chat"     class="{_active('chat')}">Chat<span class="u"></span></a>
-      <a href="?checkin"  class="{_active('checkin')}">Check-in<span class="u"></span></a>
-      <a href="?analytics"class="{_active('analytics')}">Analitika<span class="u"></span></a>
-    </div>
-  </div>
-</div>
-<script>
-(function(){
-  const nav=document.getElementById('kNav');
-  const bar=document.getElementById('kProgress');
-  let last=window.scrollY||0;
-  function onScroll(){
-    const y=window.scrollY||0;
-    const down = y>last;
-    last=y;
-    // progress
-    const h=document.documentElement.scrollHeight - window.innerHeight;
-    const pct=Math.max(0, Math.min(100, (y/h)*100));
-    bar.style.width=pct+'%';
-    // shrink
-    nav.classList.toggle('shrink', y>10);
-    // hide/show
-    if(y>140 && down) nav.classList.add('hide'); else nav.classList.remove('hide');
-  }
-  window.addEventListener('scroll', onScroll, {passive:true});
-  onScroll();
-})();
-</script>
-"""
-st.markdown(NAV_HTML, unsafe_allow_html=True)
-
-# ---------- LANDING (isti kao prethodni, skraćeno zbog poruke)
+# ---------- LANDING (sa PRICING ispod FAQ) ----------
 LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -301,7 +254,7 @@ LANDING = """
 @keyframes sway{ 0%{transform:rotate(0)} 50%{transform:rotate(2.2deg)} 100%{transform:rotate(0)}}
 @keyframes pulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
 
-/* VSL + orb (planeta) */
+/* VSL + orb */
 .vsl-area{position:relative}
 .orb-wrap{position:relative;height:90px}
 .orb{
@@ -339,7 +292,7 @@ LANDING = """
 /* KPI */
 .kpis .card{grid-column:span 3;text-align:center}
 .knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.kcap{color:#9AA3B2}
+.kcap{color:var(--mut)}
 
 /* Integrations */
 .int .card{grid-column:span 3;text-align:center;color:#C7CEDA}
@@ -353,19 +306,24 @@ LANDING = """
 .tbtn{padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:transform .18s}
 .tbtn:hover{transform:scale(1.06)}
 
-/* FAQ (big) */
+/* ===== BIG FAQ ===== */
 .faq-zone{position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--ring);background:linear-gradient(180deg,#0F1219, #0E131A 55%, #0C1016)}
-.faq-clouds:before, .faq-clouds:after{content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
-  background:radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
-             radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
-             radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
-  filter:blur(12px); opacity:.7; animation:cloudFloat 26s linear infinite;}
+.faq-clouds:before, .faq-clouds:after{
+  content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
+  background:
+    radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
+    radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
+    radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
+  filter:blur(12px); opacity:.7; animation:cloudFloat 26s linear infinite;
+}
 .faq-clouds:after{ inset:auto -25% -45% -25%; animation-duration:32s; opacity:.55 }
 @keyframes cloudFloat{0%{transform:translateX(-6%)} 50%{transform:translateX(6%)} 100%{transform:translateX(-6%)}}
+
 .faq-header{text-align:center; padding:28px 16px 10px}
 .badge{display:inline-flex;gap:6px;align-items:center;color:#C7CEDA;font-size:13px;padding:7px 12px;border:1px solid var(--ring);border-radius:999px;background:rgba(255,255,255,.05)}
 .faq-title{font-size:clamp(26px,4.2vw,44px);margin:8px 0 6px 0}
 .faq-sub{color:#A7B0BE;max-width:860px;margin:0 auto 18px}
+
 .faq{max-width:920px;margin:0 auto 26px;background:transparent;border:0}
 .faq-item{border:1px solid var(--ring);border-radius:14px;background:#0F1219;margin:12px 0;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.25); transition:transform .18s ease, box-shadow .18s ease}
 .faq-item:hover{transform:translateY(-1px); box-shadow:0 14px 36px rgba(0,0,0,.33)}
@@ -375,8 +333,9 @@ LANDING = """
 .chev svg{width:12px;height:12px}
 .faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 18px;transition:max-height .42s cubic-bezier(.2,.8,.2,1), padding .42s cubic-bezier(.2,.8,.2,1)}
 .faq-a.open{padding:12px 18px 18px}
+.contact-mini{display:flex;align-items:center;justify-content:center;gap:10px;color:#C7CEDA;padding:8px 0 18px}
 
-/* Pricing */
+/* ===== PRICING ===== */
 .pricing .wrap{border:1px solid var(--ring);border-radius:20px;padding:24px;background:#0F1219}
 .price-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
 .price-card{background:rgba(17,20,28,.9);border:1px solid var(--ring);border-radius:18px;padding:22px;box-shadow:0 16px 44px rgba(0,0,0,.35); transition:transform .18s, box-shadow .18s}
@@ -396,7 +355,9 @@ LANDING = """
 /* Reveal */
 .reveal{opacity:0;transform:translateY(20px);transition:opacity 1.2s ease, transform 1.2s ease}
 .reveal.v{opacity:1;transform:translateY(0)}
+
 .footer{color:#9AA3B2;text-align:center;padding:16px 0 22px}
+@media (max-width:900px){ .hero-grid{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -531,7 +492,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- FAQ -->
+<!-- ===== BIG FAQ ===== -->
 <section class="section">
   <div class="container faq-zone faq-clouds reveal">
     <div class="faq-header">
@@ -539,34 +500,52 @@ LANDING = """
       <h3 class="faq-title">Pitanja? Odgovori!</h3>
       <div class="faq-sub">Brzi odgovori na najčešća pitanja o MindMate platformi.</div>
     </div>
+
     <div class="faq" id="faq">
       <div class="faq-item">
-        <button class="faq-q" aria-expanded="false"><span class="txt">Da li je MindMate zamena za terapiju?</span><span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span></button>
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Da li je MindMate zamena za terapiju?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
         <div class="faq-a">Ne. MindMate nije medicinski alat niti zamena za terapiju. Ako postoji rizik — pozovi 112 i potraži stručnu pomoć.</div>
       </div>
+
       <div class="faq-item">
-        <button class="faq-q" aria-expanded="false"><span class="txt">Koliko vremena mi treba dnevno?</span><span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span></button>
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Koliko vremena mi treba dnevno?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
         <div class="faq-a">Obično 3–5 minuta: 2 pitanja za check-in i jedan mali mikro-korak (5–10 min) kada želiš da dodaš momentum.</div>
       </div>
+
       <div class="faq-item">
-        <button class="faq-q" aria-expanded="false"><span class="txt">Kako čuvate privatnost?</span><span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span></button>
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Kako čuvate privatnost?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
         <div class="faq-a">Za MVP, podaci ostaju lokalno u okviru aplikacije i mogu se obrisati u bilo kom trenutku. Nema deljenja sa trećim stranama.</div>
       </div>
+
       <div class="faq-item">
-        <button class="faq-q" aria-expanded="false"><span class="txt">Da li radi na telefonu i računaru?</span><span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span></button>
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Da li radi na telefonu i računaru?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
         <div class="faq-a">Da. Interfejs je responzivan i prilagođava se tvojoj rezoluciji (desktop, tablet, telefon).</div>
       </div>
     </div>
-    <div class="contact-mini" style="display:flex;align-items:center;justify-content:center;gap:10px;color:#C7CEDA;padding:8px 0 18px">📧 Imaš pitanje? Piši: <span style="font-weight:700;margin-left:6px">hello@mindmate.app</span></div>
+
+    <div class="contact-mini">📧 Imaš pitanje? Piši: <span style="font-weight:700;margin-left:6px">hello@mindmate.app</span></div>
   </div>
 </section>
 
-<!-- Pricing -->
+<!-- ===== PRICING (Free / Pro) ===== -->
 <section class="section pricing">
   <div class="container reveal">
     <div class="wrap">
       <h2 class="h2" style="margin-bottom:10px">Odaberi svoj ritam</h2>
       <div class="price-grid">
+        <!-- Free -->
         <div class="price-card">
           <div class="price-title">Free Trial</div>
           <div class="price-row"><div class="price-num">0</div><div class="price-unit">RSD / 14 dana</div></div>
@@ -576,6 +555,7 @@ LANDING = """
           <div class="li"><div class="bullet"></div><div>AI chat (srpski)</div></div>
           <a class="price-btn primary" href="?home">Započni besplatno</a>
         </div>
+        <!-- Pro -->
         <div class="price-card">
           <div class="price-title">Pro</div>
           <div class="price-row"><div class="price-num">300</div><div class="price-unit">RSD / mes</div></div>
@@ -590,18 +570,26 @@ LANDING = """
   </div>
 </section>
 
-<section class="section tight"><div class="container reveal" style="text-align:center"><a class="btn btn-primary" href="?home">Kreni besplatno</a></div></section>
+<!-- CTA -->
+<section class="section tight">
+  <div class="container reveal" style="text-align:center">
+    <a class="btn btn-primary" href="?home">Kreni besplatno</a>
+  </div>
+</section>
+
 <div class="footer">© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>
 
 <script>
 // Reveal
 const ob=new IntersectionObserver(es=>es.forEach(x=>x.isIntersecting&&x.target.classList.add('v')),{threshold:.2});
 document.querySelectorAll('.reveal').forEach(el=>ob.observe(el));
+
 // KPI count-up
 function cu(el){const t=parseInt(el.getAttribute('data-k'))||0,d=1200,s=performance.now();
 function tick(n){const p=Math.min((n-s)/d,1);el.textContent=Math.floor(t*(.15+.85*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)} requestAnimationFrame(tick)}
 const ko=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.knum').forEach(cu);ko.unobserve(x.target)}}),{threshold:.3});
 document.querySelectorAll('.kpis').forEach(el=>ko.observe(el));
+
 // Chart
 const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=320,P=44,ymin=0,ymax=100;
 const grid=document.getElementById('grid'), xg=document.getElementById('xlabels'), svg=document.getElementById('mmChart');
@@ -615,19 +603,28 @@ const prodPath=document.getElementById('prodPath'), moodPath=document.getElement
 function sAnim(p,d=1300){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
 const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){sAnim(prodPath,1200);setTimeout(()=>sAnim(moodPath,1500),150);cio.unobserve(svg)}})},{threshold:.35});
 cio.observe(svg);
+
 // Testimonials slider
 (function(){const rail=document.getElementById('trail'); if(!rail) return; let i=0; const cards=rail.children.length;
 function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+16)}px)`;}
 document.getElementById('prev').onclick=()=>go(-1); document.getElementById('next').onclick=()=>go(1);})();
-// FAQ open/close
+
+// FAQ logic
 document.querySelectorAll('.faq-item').forEach(item=>{
-  const btn=item.querySelector('.faq-q'); const chev=item.querySelector('.chev'); const panel=item.querySelector('.faq-a');
+  const btn=item.querySelector('.faq-q');
+  const chev=item.querySelector('.chev');
+  const panel=item.querySelector('.faq-a');
   btn.addEventListener('click',()=>{
     const open = btn.getAttribute('aria-expanded')==='true';
     btn.setAttribute('aria-expanded', String(!open));
     chev.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
-    if(open){ panel.style.maxHeight = panel.scrollHeight + 'px'; requestAnimationFrame(()=>{ panel.style.maxHeight = '0px'; panel.classList.remove('open'); }); }
-    else{ panel.classList.add('open'); panel.style.maxHeight = panel.scrollHeight + 'px'; }
+    if(open){
+      panel.style.maxHeight = panel.scrollHeight + 'px';
+      requestAnimationFrame(()=>{ panel.style.maxHeight = '0px'; panel.classList.remove('open'); });
+    }else{
+      panel.classList.add('open');
+      panel.style.maxHeight = panel.scrollHeight + 'px';
+    }
   });
 });
 </script>
