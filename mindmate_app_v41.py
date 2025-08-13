@@ -1,7 +1,4 @@
-# app.py — MindMate compact landing + upgraded FAQ (full-height + animations)
-# - Kompaktan layout; planet orb vidljiv; “Trusted by”; benefiti; poređenje;
-#   mini graf (SVG); KPI; integracije; testovi; NOVI FAQ (clouds + full expand)
-# - Početna/Chat/Check-in/Analitika (Plotly)
+# app.py — MindMate landing + BIG FAQ + PRICING (Free/Pro) + Početna/Chat/Check-in/Analitika
 
 import os, json, requests, math
 import streamlit as st
@@ -220,7 +217,7 @@ elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# ---------- LANDING (kompaktno + novi FAQ) ----------
+# ---------- LANDING (sa PRICING ispod FAQ) ----------
 LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -309,7 +306,7 @@ LANDING = """
 .tbtn{padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:transform .18s}
 .tbtn:hover{transform:scale(1.06)}
 
-/* ===== NEW FAQ (big, clouds, full expand) ===== */
+/* ===== BIG FAQ ===== */
 .faq-zone{position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--ring);background:linear-gradient(180deg,#0F1219, #0E131A 55%, #0C1016)}
 .faq-clouds:before, .faq-clouds:after{
   content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
@@ -337,6 +334,23 @@ LANDING = """
 .faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 18px;transition:max-height .42s cubic-bezier(.2,.8,.2,1), padding .42s cubic-bezier(.2,.8,.2,1)}
 .faq-a.open{padding:12px 18px 18px}
 .contact-mini{display:flex;align-items:center;justify-content:center;gap:10px;color:#C7CEDA;padding:8px 0 18px}
+
+/* ===== PRICING ===== */
+.pricing .wrap{border:1px solid var(--ring);border-radius:20px;padding:24px;background:#0F1219}
+.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
+.price-card{background:rgba(17,20,28,.9);border:1px solid var(--ring);border-radius:18px;padding:22px;box-shadow:0 16px 44px rgba(0,0,0,.35); transition:transform .18s, box-shadow .18s}
+.price-card:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 22px 60px rgba(0,0,0,.45)}
+.price-title{font-weight:900;margin:0 0 6px 0}
+.price-row{display:flex;align-items:baseline;gap:8px}
+.price-num{font-size:clamp(28px,4vw,36px);font-weight:900}
+.price-unit{color:#9AA3B2;font-weight:700}
+.hr{height:1px;background:rgba(255,255,255,.08);margin:12px 0}
+.li{display:flex;gap:10px;align-items:flex-start;color:#C7CEDA;margin:8px 0}
+.bullet{width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));margin-top:8px}
+.price-btn{margin-top:14px;display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring)}
+.price-btn.primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
+.price-btn.ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
+@media (max-width:900px){ .price-grid{grid-template-columns:1fr} }
 
 /* Reveal */
 .reveal{opacity:0;transform:translateY(20px);transition:opacity 1.2s ease, transform 1.2s ease}
@@ -478,7 +492,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- ===== BIG FAQ with clouds ===== -->
+<!-- ===== BIG FAQ ===== -->
 <section class="section">
   <div class="container faq-zone faq-clouds reveal">
     <div class="faq-header">
@@ -525,6 +539,37 @@ LANDING = """
   </div>
 </section>
 
+<!-- ===== PRICING (Free / Pro) ===== -->
+<section class="section pricing">
+  <div class="container reveal">
+    <div class="wrap">
+      <h2 class="h2" style="margin-bottom:10px">Odaberi svoj ritam</h2>
+      <div class="price-grid">
+        <!-- Free -->
+        <div class="price-card">
+          <div class="price-title">Free Trial</div>
+          <div class="price-row"><div class="price-num">0</div><div class="price-unit">RSD / 14 dana</div></div>
+          <div class="hr"></div>
+          <div class="li"><div class="bullet"></div><div>Kompletne funkcije 14 dana</div></div>
+          <div class="li"><div class="bullet"></div><div>Dnevni check-in i analitika</div></div>
+          <div class="li"><div class="bullet"></div><div>AI chat (srpski)</div></div>
+          <a class="price-btn primary" href="?home">Započni besplatno</a>
+        </div>
+        <!-- Pro -->
+        <div class="price-card">
+          <div class="price-title">Pro</div>
+          <div class="price-row"><div class="price-num">300</div><div class="price-unit">RSD / mes</div></div>
+          <div class="hr"></div>
+          <div class="li"><div class="bullet"></div><div>Neograničen chat & check-in</div></div>
+          <div class="li"><div class="bullet"></div><div>Napredna analitika & ciljevi</div></div>
+          <div class="li"><div class="bullet"></div><div>Prioritetna podrška</div></div>
+          <a class="price-btn ghost" href="?home">Kreni sa Pro planom</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- CTA -->
 <section class="section tight">
   <div class="container reveal" style="text-align:center">
@@ -555,8 +600,8 @@ labels.forEach((lab,i)=>{const x=P+(W-2*P)*(i/(labels.length-1||1)), t=document.
   t.textContent=lab.slice(5).replace("-","/");xg.appendChild(t)});
 function path(vals){const pts=vals.map((v,i)=>[P+(W-2*P)*(i/(vals.length-1||1)), P+(H-2*P)*(1-(v-ymin)/(ymax-ymin))]); if(!pts.length)return ""; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=1;i<pts.length;i++){d+=` L ${pts[i][0]} ${pts[i][1]}`} return d}
 const prodPath=document.getElementById('prodPath'), moodPath=document.getElementById('moodPath'); prodPath.setAttribute("d",path(prod)); moodPath.setAttribute("d",path(mood));
-function sAnim(p,d=1400){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
-const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){sAnim(prodPath,1300);setTimeout(()=>sAnim(moodPath,1500),150);cio.unobserve(svg)}})},{threshold:.35});
+function sAnim(p,d=1300){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
+const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){sAnim(prodPath,1200);setTimeout(()=>sAnim(moodPath,1500),150);cio.unobserve(svg)}})},{threshold:.35});
 cio.observe(svg);
 
 // Testimonials slider
@@ -564,7 +609,7 @@ cio.observe(svg);
 function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+16)}px)`;}
 document.getElementById('prev').onclick=()=>go(-1); document.getElementById('next').onclick=()=>go(1);})();
 
-// ===== FAQ logic: full-height expand + chevron rotate =====
+// FAQ logic
 document.querySelectorAll('.faq-item').forEach(item=>{
   const btn=item.querySelector('.faq-q');
   const chev=item.querySelector('.chev');
@@ -572,11 +617,9 @@ document.querySelectorAll('.faq-item').forEach(item=>{
   btn.addEventListener('click',()=>{
     const open = btn.getAttribute('aria-expanded')==='true';
     btn.setAttribute('aria-expanded', String(!open));
-    // rotate chevron
     chev.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
-    // animate height to full content
     if(open){
-      panel.style.maxHeight = panel.scrollHeight + 'px'; // set to current for smooth collapse
+      panel.style.maxHeight = panel.scrollHeight + 'px';
       requestAnimationFrame(()=>{ panel.style.maxHeight = '0px'; panel.classList.remove('open'); });
     }else{
       panel.classList.add('open');
@@ -599,7 +642,7 @@ def render_landing():
             .replace("__X_LABELS__", json.dumps(labels))
             .replace("__P_SERIES__", json.dumps(prod))
             .replace("__M_SERIES__", json.dumps(mood)))
-    st_html(html, height=4600, width=1280, scrolling=True)
+    st_html(html, height=5200, width=1280, scrolling=True)
 
 # ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
