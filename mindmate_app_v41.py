@@ -1,4 +1,5 @@
-# app.py — MindMate landing + BIG FAQ + PRICING (Free/Pro) + Početna/Chat/Check-in/Analitika
+# app.py — MindMate: landing + BIG FAQ + PRICING + Početna/Chat/Check-in/Analitika
+# (sa Kendo-like sticky navbarom)
 
 import os, json, requests, math
 import streamlit as st
@@ -22,111 +23,8 @@ def safe_rerun():
     else: st.experimental_rerun()
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
-# ---------- NAV (Kendo style) ----------
-cur = st.session_state.get("page","landing")
 
-st.markdown("""
-<div class="k-nav">
-    <div class="k-links" id="kLinks">
-        <a class="k-link active" href="#welcome">Welcome</a>
-        <a class="k-link" href="#pocetna">Početna</a>
-        <a class="k-link" href="#chat">Chat</a>
-        <a class="k-link" href="#checkin">Check-in</a>
-        <a class="k-link" href="#analitika">Analitika</a>
-    </div>
-    <button class="k-burger" id="kBurger">☰</button>
-    <a class="k-cta" href="#home">Kreni besplatno</a>
-</div>
-""", unsafe_allow_html=True)
-
-
-.k-links{{display:flex;align-items:center;gap:8px;flex-wrap:wrap}}
-.k-link{{text-decoration:none;color:var(--ink);font-weight:700;padding:8px 12px;border:1px solid var(--ring);
-  border-radius:12px;background:rgba(255,255,255,.03);transition:transform .18s ease, border-color .18s ease, background .18s}}
-.k-link:hover{{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.03)}}
-.k-link.active{{background:linear-gradient(90deg,#7C5CFF,#4EA3FF); color:#0B0D12}}
-
-.k-cta{{text-decoration:none;font-weight:800;padding:10px 14px;border-radius:12px;border:1px solid var(--ring);
-  background:linear-gradient(90deg,#7C5CFF,#4EA3FF); color:#0B0D12}}
-
-.k-burger{{display:none; width:38px;height:38px;border-radius:10px;border:1px solid var(--ring);
-  background:rgba(255,255,255,.04); color:var(--ink); font-weight:900}}
-@media (max-width:820px){{
-  .k-links{{display:none}}
-  .k-burger{{display:grid;place-items:center}}
-}}
-/* mobilni meni */
-.k-drawer{{position:fixed; inset:56px 10px auto 10px; background:#0F1219; border:1px solid var(--ring);
-  border-radius:14px; padding:10px; display:none; flex-direction:column; gap:8px; z-index:99999}}
-.k-drawer .k-link{{display:block}}
-.k-drawer.show{{display:flex}}
-
-/* glatko scrollanje kad postoje hash linkovi */
-html{{scroll-behavior:smooth}}
-</style>
-
-<div class="k-navwrap">
-  <div class="k-nav">
-    <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
-
-    <div class="k-links" id="kLinks">
-      <a class="k-link {'active' if cur=='landing' else ''}"   href="?landing">Welcome</a>
-      <a class="k-link {'active' if cur=='home' else ''}"      href="?home">Početna</a>
-      <a class="k-link {'active' if cur=='chat' else ''}"      href="?chat">Chat</a>
-      <a class="k-link {'active' if cur=='checkin' else ''}"   href="?checkin">Check-in</a>
-      <a class="k-link {'active' if cur=='analytics' else ''}" href="?analytics">Analitika</a>
-    </div>
-
-    <button class="k-burger" id="kBurger">≡</button>
-    <a class="k-cta" href="?home">Kreni besplatno</a>
-  </div>
-
-  <div class="k-drawer" id="kDrawer">
-    <a class="k-link {'active' if cur=='landing' else ''}"   href="?landing">Welcome</a>
-    <a class="k-link {'active' if cur=='home' else ''}"      href="?home">Početna</a>
-    <a class="k-link {'active' if cur=='chat' else ''}"      href="?chat">Chat</a>
-    <a class="k-link {'active' if cur=='checkin' else ''}"   href="?checkin">Check-in</a>
-    <a class="k-link {'active' if cur=='analytics' else ''}" href="?analytics">Analitika</a>
-  </div>
-</div>
-
-<script>
-(function(){{
-  const burger = document.getElementById('kBurger');
-  const drawer = document.getElementById('kDrawer');
-  burger && burger.addEventListener('click', ()=> drawer.classList.toggle('show'));
-
-  // zatvori drawer na klik linka
-  drawer && drawer.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>drawer.classList.remove('show')));
-
-  // highlight aktivnog linka i pri hash scrollu (ako je na istoj strani)
-  document.querySelectorAll('.k-link[href^="#"]').forEach(a => {{
-    a.addEventListener('click', (e) => {{
-      const id = a.getAttribute('href').slice(1);
-      const el = document.getElementById(id);
-      if(el) {{
-        e.preventDefault();
-        el.scrollIntoView({{behavior:'smooth', block:'start'}});
-        document.querySelectorAll('.k-link').forEach(x=>x.classList.remove('active'));
-        a.classList.add('active');
-      }}
-    }});
-  }});
-
-  // dodaj tamniju pozadinu kad se skroluje (Kendo feel)
-  const wrap = document.querySelector('.k-navwrap');
-  const onScroll = () => {{
-    if(window.scrollY>40) wrap.style.background='rgba(12,14,20,.78)';
-    else wrap.style.background='rgba(12,14,20,.55)';
-  }};
-  window.addEventListener('scroll', onScroll, {{passive:true}});
-  onScroll();
-}})();
-</script>
-""", unsafe_allow_html=True)
-
-
-# ---------- Global okvir ----------
+# ---------- Global stil ----------
 st.markdown("""
 <style>
 :root{
@@ -135,7 +33,7 @@ st.markdown("""
 }
 html,body{background:var(--bg); color:var(--ink)}
 .main .block-container{
-  padding-top:.6rem!important; padding-left:2rem!important; padding-right:2rem!important;
+  padding-top:0!important; padding-left:2rem!important; padding-right:2rem!important;
   max-width:1280px!important; margin-inline:auto!important;
 }
 @media (max-width:900px){
@@ -146,10 +44,83 @@ html,body{background:var(--bg); color:var(--ink)}
   background:linear-gradient(90deg,var(--g1),var(--g2))!important;color:#0B0D12!important;
   font-weight:800!important;border:none!important
 }
+
+/* ====== Kendo-like NAVBAR ====== */
+.k-wrap{position:sticky; top:0; z-index:50; backdrop-filter:blur(10px);
+        background:rgba(11,13,18,.55); border-bottom:1px solid var(--ring)}
+.k-nav{max-width:1180px; margin:0 auto; display:flex; align-items:center; justify-content:space-between;
+       padding:12px 6px;}
+.k-brand{display:flex; gap:10px; align-items:center; font-weight:900}
+.k-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));
+       box-shadow:0 0 12px rgba(124,92,255,.7)}
+.k-links{display:flex; gap:8px; align-items:center}
+.k-link{padding:8px 11px;border-radius:12px; text-decoration:none; color:var(--ink); font-weight:700;
+        border:1px solid var(--ring); background:rgba(255,255,255,.02); transition:transform .18s ease}
+.k-link:hover{transform:translateY(-1px) scale(1.03); border-color:rgba(255,255,255,.18)}
+.k-link.active{background:linear-gradient(90deg, #1a1f2b, #141925); border-color:rgba(255,255,255,.18)}
+.k-cta{padding:9px 12px; border-radius:12px; font-weight:800; text-decoration:none; color:#0B0D12;
+       background:linear-gradient(90deg,var(--g1),var(--g2)); border:1px solid transparent}
+.k-right{display:flex; gap:10px; align-items:center}
+
+/* Burger za < 900px */
+.k-burger{display:none; border:1px solid var(--ring); background:rgba(255,255,255,.06);
+          color:var(--ink); border-radius:10px; padding:6px 9px; font-weight:900; cursor:pointer}
+@media (max-width:900px){
+  .k-links{display:none}
+  .k-burger{display:inline-block}
+  .k-drawer{position:fixed; top:56px; left:0; right:0; background:#0F1219; border-bottom:1px solid var(--ring);
+            display:none; padding:10px 14px; z-index:60}
+  .k-drawer a{display:block; margin:6px 0; border:1px solid var(--ring); border-radius:10px;
+              text-decoration:none; color:var(--ink); padding:9px 12px; font-weight:700;
+              background:rgba(255,255,255,.03)}
+}
+
+/* Malo prostora ispod nav-a */
+.k-offset{height:8px}
 </style>
+<div class="k-wrap">
+  <div class="k-nav">
+    <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
+    <div class="k-links" id="kLinks">
+      <a class="k-link" href="?landing">Welcome</a>
+      <a class="k-link" href="?home">Početna</a>
+      <a class="k-link" href="?chat">Chat</a>
+      <a class="k-link" href="?checkin">Check-in</a>
+      <a class="k-link" href="?analytics">Analitika</a>
+    </div>
+    <div class="k-right">
+      <button class="k-burger" id="kBurger">≡</button>
+      <a class="k-cta" href="?home">Kreni besplatno</a>
+    </div>
+  </div>
+  <div class="k-drawer" id="kDrawer">
+    <a href="?landing">Welcome</a>
+    <a href="?home">Početna</a>
+    <a href="?chat">Chat</a>
+    <a href="?checkin">Check-in</a>
+    <a href="?analytics">Analitika</a>
+  </div>
+</div>
+<div class="k-offset"></div>
+<script>
+(function(){
+  // set active link by query param
+  const params = new URLSearchParams(window.location.search);
+  const key = params.keys().next().value || 'landing';
+  document.querySelectorAll('.k-link').forEach(a=>{
+    const href = a.getAttribute('href')||'';
+    const q = href.replace('?','');
+    if(q === key) a.classList.add('active');
+  });
+  // burger toggle
+  const b = document.getElementById('kBurger');
+  const d = document.getElementById('kDrawer');
+  if(b && d){ b.addEventListener('click', ()=>{ d.style.display = (d.style.display==='block'?'none':'block'); }); }
+})();
+</script>
 """, unsafe_allow_html=True)
 
-# ---------- “Baza” ----------
+# ---------- Local “baza” ----------
 def _init_db():
     if not os.path.exists(DB_PATH):
         with open(DB_PATH, "w", encoding="utf-8") as f:
@@ -289,30 +260,7 @@ if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ---------- NAV ----------
-st.markdown("""
-<style>
-.mm-navwrap{position:sticky;top:0;z-index:9;background:rgba(17,20,28,.65);backdrop-filter:blur(10px);
-             border-bottom:1px solid var(--ring)}
-.mm-nav{max-width:1180px;margin:0 auto;padding:10px 6px;display:flex;align-items:center;justify-content:space-between}
-.mm-brand{display:flex;align-items:center;gap:10px;font-weight:900;color:#E8EAEE}
-.mm-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));
-        box-shadow:0 0 12px rgba(124,92,255,.7)}
-.mm-links{display:flex;gap:8px;flex-wrap:wrap}
-.mm-links a{text-decoration:none;color:#E8EAEE;font-weight:700;padding:8px 11px;border:1px solid var(--ring);
-            border-radius:12px;background:rgba(255,255,255,.02);transition:transform .18s ease}
-.mm-links a:hover{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.03)}
-@media (max-width:720px){ .mm-links a{padding:6px 9px} }
-</style>
-<div class="mm-navwrap"><div class="mm-nav">
-  <div class="mm-brand"><div class="mm-dot"></div><div>MindMate</div></div>
-  <div class="mm-links">
-    <a href="?landing">Welcome</a><a href="?home">Početna</a><a href="?chat">Chat</a>
-    <a href="?checkin">Check-in</a><a href="?analytics">Analitika</a>
-  </div>
-</div></div>
-""", unsafe_allow_html=True)
-
+# sync sa query paramima (linkovi iz nav-a)
 qp=st.query_params
 if   "landing"  in qp: st.session_state.page="landing"
 elif "home"     in qp: st.session_state.page="home"
@@ -330,7 +278,8 @@ LANDING = """
   --g1:#7C5CFF; --g2:#4EA3FF; --MAX:1180px;
   --s-xl:64px; --s-lg:48px; --s-md:32px; --s-sm:20px;
 }
-*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
+*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
 .container{width:min(var(--MAX),92vw);margin:0 auto}
 .section{padding-block:var(--s-lg)} .section.tight{padding-block:var(--s-md)}
 .h2{font-size:clamp(22px,2.6vw,30px);margin:0 0 12px 0}
@@ -394,7 +343,8 @@ LANDING = """
 
 /* KPI */
 .kpis .card{grid-column:span 3;text-align:center}
-.knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .kcap{color:var(--mut)}
 
 /* Integrations */
@@ -495,7 +445,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- VSL + planeta + Trusted by -->
+<!-- VSL + Trusted by -->
 <section class="section tight vsl-area">
   <div class="container reveal">
     <div class="orb-wrap"><div class="orb"></div></div>
@@ -737,7 +687,7 @@ document.querySelectorAll('.faq-item').forEach(item=>{
 def render_landing():
     users, sessions, sat, retention = compute_metrics()
     labels, prod, mood = compute_trend_series()
-    html = (LANDING
+    html_doc = (LANDING
             .replace("__SESS__", str(max(sessions,0)))
             .replace("__USERS__", str(max(users,1)))
             .replace("__SAT__", str(max(min(sat,100),0)))
@@ -745,7 +695,7 @@ def render_landing():
             .replace("__X_LABELS__", json.dumps(labels))
             .replace("__P_SERIES__", json.dumps(prod))
             .replace("__M_SERIES__", json.dumps(mood)))
-    st_html(html, height=5200, width=1280, scrolling=True)
+    st_html(html_doc, height=5200, width=1280, scrolling=True)
 
 # ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
