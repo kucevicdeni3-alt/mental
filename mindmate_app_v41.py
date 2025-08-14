@@ -1,4 +1,4 @@
-# app.py — MindMate: Landing (sa grafovima/FAQ/PRICING), Login/Register, Guarded pages
+# app.py — MindMate: Landing (sa grafovima/FAQ/PRICING), Login/Register, Guarded pages — CLEAN
 import os, json, requests, math
 import streamlit as st
 from datetime import datetime, date, timedelta
@@ -212,83 +212,85 @@ if "auth_email" not in st.session_state: st.session_state.auth_email=""
 
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ---------- NAV (Apple-style, sa višim opacity + CTA dinamički) ----------
+# ---------- NAV (Apple-style, veća opacity) ----------
 def render_navbar():
     auth = st.session_state.get("auth_ok", False)
     cta_label = "Izloguj se" if auth else "Prijava"
     cta_href  = "?logout=1" if auth else "?login"
-    st.markdown(f"""
+
+    navbar_html = """
 <style>
 /* Wrapper */
-.mm-nav{{position:sticky;top:0;inset-inline:0;z-index:1000;}}
+.mm-nav{position:sticky;top:0;inset-inline:0;z-index:1000;}
 /* Bar */
-.mm-bar{{
+.mm-bar{
   background: rgba(16,20,27,.88);
   -webkit-backdrop-filter: saturate(160%) blur(10px);
   backdrop-filter: saturate(160%) blur(10px);
   border-bottom:1px solid var(--ring);
   transition: background .22s cubic-bezier(.22,.95,.57,1.01), box-shadow .22s, border-color .22s;
-}}
-.mm-bar.scrolled{{ background: var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,.25); border-bottom-color: transparent; }}
-.mm-inner{{max-width:1180px;margin:0 auto;padding:10px 8px;display:flex;align-items:center;justify-content:space-between;gap:.75rem}}
+}
+.mm-bar.scrolled{ background: var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,.25); border-bottom-color: transparent; }
+.mm-inner{max-width:1180px;margin:0 auto;padding:10px 8px;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
 /* Brand */
-.mm-brand{{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;text-decoration:none}}
-.mm-dot{{width:10px;height:10px;border-radius:50%;
+.mm-brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;text-decoration:none}
+.mm-dot{width:10px;height:10px;border-radius:50%;
   background:linear-gradient(90deg,var(--g1),var(--g2));
   box-shadow:0 0 12px color-mix(in oklab, var(--g1) 60%, transparent);
-}}
+}
 /* Links row */
-.mm-menu{{display:flex;align-items:center;gap:10px}}
-.mm-links{{position:relative;display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px}}
-.mm-link{{
+.mm-menu{display:flex;align-items:center;gap:10px}
+.mm-links{position:relative;display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px}
+.mm-link{
   --padx:.9rem;
   display:inline-flex;align-items:center;justify-content:center;height:40px;
   padding:0 var(--padx);border-radius:999px;text-decoration:none;
   color:var(--mut);font-weight:800;transition:color .16s, transform .16s;
-}}
-.mm-link:hover{{ color:var(--ink); transform:translateY(-1px); }}
-.mm-indicator{{
+}
+.mm-link:hover{ color:var(--ink); transform:translateY(-1px); }
+/* Sliding indicator “pill” */
+.mm-indicator{
   position:absolute; left:0; bottom:3px; height:34px; border-radius:999px;
   background:rgba(255,255,255,.06); border:1px solid var(--ring);
   transition: width .22s cubic-bezier(.22,.95,.57,1.01), transform .22s cubic-bezier(.22,.95,.57,1.01), opacity .22s;
   transform: translateX(0); opacity:0; z-index:-1;
-}}
-.mm-link.is-active ~ .mm-indicator{{ opacity:1; }}
+}
+.mm-link.is-active ~ .mm-indicator{ opacity:1; }
 /* CTA */
-.mm-cta{{
+.mm-cta{
   display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 1rem;
   border-radius:999px;text-decoration:none;font-weight:800;color:#0B0D12;
   background:linear-gradient(90deg,var(--g1),var(--g2)); border:1px solid var(--ring);
   box-shadow:0 8px 20px rgba(0,0,0,.25); transition:transform .16s, box-shadow .16s;
-}}
-.mm-cta:hover{{ transform:translateY(-1px) scale(1.03); }}
+}
+.mm-cta:hover{ transform:translateY(-1px) scale(1.03); }
 /* Hamburger (mobile) */
-.mm-toggle{{
+.mm-toggle{
   --bar:2px; display:none; position:relative; width:38px; height:38px; border:0; background:transparent; border-radius:12px; cursor:pointer;
-}}
-.mm-toggle span{{ position:absolute; left:8px; right:8px; height:var(--bar); background:var(--ink);
-  border-radius:999px; transition: transform .22s cubic-bezier(.22,.95,.57,1.01), opacity .22s; }}
-.mm-toggle span:nth-child(1){{ top:11px; }}
-.mm-toggle span:nth-child(2){{ top:18px; }}
-mm-toggle span:nth-child(3){{ top:25px; }}
-@media (max-width: 900px){{
-  .mm-toggle{{ display:block; }}
-  .mm-menu{{
+}
+.mm-toggle span{ position:absolute; left:8px; right:8px; height:var(--bar); background:var(--ink);
+  border-radius:999px; transition: transform .22s cubic-bezier(.22,.95,.57,1.01), opacity .22s; }
+.mm-toggle span:nth-child(1){ top:11px; }
+.mm-toggle span:nth-child(2){ top:18px; }
+.mm-toggle span:nth-child(3){ top:25px; }
+@media (max-width: 900px){
+  .mm-toggle{ display:block; }
+  .mm-menu{
     position:fixed; left:0; right:0; top:62px;
     background:var(--bg);
     border-bottom:1px solid var(--ring);
     transform:translateY(-8px); opacity:0; pointer-events:none;
     flex-direction:column; align-items:stretch; gap:.5rem; padding:.75rem 1rem 1rem;
     transition: opacity .22s, transform .22s;
-  }}
-  .mm-menu.open{{ transform:translateY(0); opacity:1; pointer-events:auto; }}
-  .mm-links{{ justify-content:center; }}
-  .mm-link{{ height:44px; }}
-  .mm-cta{{ height:44px; }}
-}}
-@media (prefers-reduced-motion: reduce){{
-  .mm-bar, .mm-bar *{{ transition:none !important; animation:none !important; }}
-}}
+  }
+  .mm-menu.open{ transform:translateY(0); opacity:1; pointer-events:auto; }
+  .mm-links{ justify-content:center; }
+  .mm-link{ height:44px; }
+  .mm-cta{ height:44px; }
+}
+@media (prefers-reduced-motion: reduce){
+  .mm-bar, .mm-bar *{ transition:none !important; animation:none !important; }
+}
 </style>
 <div class="mm-nav">
   <div class="mm-bar" id="mmBar">
@@ -306,13 +308,13 @@ mm-toggle span:nth-child(3){{ top:25px; }}
           <a class="mm-link" href="?analytics" data-page="analytics">Analitika</a>
           <span class="mm-indicator" id="mmIndicator" aria-hidden="true"></span>
         </div>
-        <a class="mm-cta" href="{cta_href}">{cta_label}</a>
+        <a class="mm-cta" href="__CTA_HREF__">__CTA_LABEL__</a>
       </nav>
     </div>
   </div>
 </div>
 <script>
-(function(){{
+(function(){
   const bar = document.getElementById('mmBar');
   const toggle = document.getElementById('mmToggle');
   const menu = document.getElementById('mmMenu');
@@ -320,12 +322,12 @@ mm-toggle span:nth-child(3){{ top:25px; }}
   const indicator = document.getElementById('mmIndicator');
   const links = [...document.querySelectorAll('.mm-link')];
   const onScroll = () => bar.classList.toggle('scrolled', window.scrollY > 8);
-  onScroll(); addEventListener('scroll', onScroll, {{passive:true}});
+  onScroll(); addEventListener('scroll', onScroll, {passive:true});
   const qs = new URLSearchParams(location.search);
   const key = ['landing','home','chat','checkin','analytics','login','register'].find(k => qs.has(k)) || 'landing';
   const active = links.find(a => a.dataset.page === key) || links[0];
   active.classList.add('is-active');
-  function moveIndicator(el){{
+  function moveIndicator(el){
     if(!el || !indicator) return;
     const r = el.getBoundingClientRect();
     const rw = linksWrap.getBoundingClientRect();
@@ -334,28 +336,40 @@ mm-toggle span:nth-child(3){{ top:25px; }}
     indicator.style.transform = `translateX(${r.left - rw.left}px)`;
   }
   moveIndicator(active);
-  <script>
-// JavaScript for navigation highlight fix
-links.forEach(l => l.classList.remove('is-active'));
-</script>
-
+  links.forEach(a=>{
+    a.addEventListener('mouseenter', ()=> moveIndicator(a));
+    a.addEventListener('focus', ()=> moveIndicator(a));
+    a.addEventListener('click', ()=>{
+      links.forEach(l=>l.classList.remove('is-active'));
+      a.classList.add('is-active'); moveIndicator(a);
+      if(menu.classList.contains('open')) setMenu(false);
     });
-  }});
+  });
   linksWrap.addEventListener('mouseleave', ()=> moveIndicator(document.querySelector('.mm-link.is-active')));
-  function setMenu(open){{
+  function setMenu(open){
     menu.classList.toggle('open', open);
     toggle.setAttribute('aria-expanded', open);
     const [a,b,c] = toggle.querySelectorAll('span');
-    if(open){{ a.style.transform = 'translateY(7px) rotate(45deg)'; b.style.opacity = '0'; c.style.transform = 'translateY(-7px) rotate(-45deg)'; }}
-    else{{ a.style.transform = ''; b.style.opacity = ''; c.style.transform = ''; }}
-  }}
+    if(open){
+      a.style.transform = 'translateY(7px) rotate(45deg)';
+      b.style.opacity = '0';
+      c.style.transform = 'translateY(-7px) rotate(-45deg)';
+    }else{
+      a.style.transform = ''; b.style.opacity = ''; c.style.transform = '';
+    }
+  }
   toggle?.addEventListener('click', ()=> setMenu(!menu.classList.contains('open')));
-  menu?.addEventListener('click', e => {{ if(e.target.closest('a')) setMenu(false); }});
-  addEventListener('keydown', e => {{ if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); }});
-  let rAF=null; addEventListener('resize', ()=>{{ cancelAnimationFrame(rAF); rAF=requestAnimationFrame(()=>moveIndicator(document.querySelector('.mm-link.is-active')||active)); }});
-}})();
+  menu?.addEventListener('click', e => { if(e.target.closest('a')) setMenu(false); });
+  addEventListener('keydown', e => { if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); });
+  let rAF=null; addEventListener('resize', ()=>{
+    cancelAnimationFrame(rAF);
+    rAF=requestAnimationFrame(()=>moveIndicator(document.querySelector('.mm-link.is-active')||active));
+  });
+})();
 </script>
-""", unsafe_allow_html=True)
+"""
+    navbar_html = navbar_html.replace("__CTA_HREF__", cta_href).replace("__CTA_LABEL__", cta_label)
+    st.markdown(navbar_html, unsafe_allow_html=True)
 
 # ---------- Query params & logout handling ----------
 qp = st.query_params
@@ -375,7 +389,10 @@ elif "analytics"in qp: st.session_state.page="analytics"
 elif "login"    in qp: st.session_state.page="login"
 elif "register" in qp: st.session_state.page="register"
 
-# ---------- LANDING (originalni dizajn, samo CTA → BOLJI JA! vodi na login) ----------
+# Render navbar (posle ažuriranja state-a)
+render_navbar()
+
+# ---------- LANDING (originalni dizajn, CTA → BOLJI JA! vodi na login) ----------
 LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
