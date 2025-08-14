@@ -1,5 +1,4 @@
 # app.py — MindMate landing + BIG FAQ + PRICING (Free/Pro) + Početna/Chat/Check-in/Analitika
-
 import os, json, requests, math
 import streamlit as st
 from datetime import datetime, date, timedelta
@@ -186,28 +185,172 @@ if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ---------- NAV ----------
+# ---------- NAV (animated) ----------
 st.markdown("""
 <style>
-.mm-navwrap{position:sticky;top:0;z-index:9;background:rgba(17,20,28,.65);backdrop-filter:blur(10px);
-             border-bottom:1px solid var(--ring)}
-.mm-nav{max-width:1180px;margin:0 auto;padding:10px 6px;display:flex;align-items:center;justify-content:space-between}
-.mm-brand{display:flex;align-items:center;gap:10px;font-weight:900;color:#E8EAEE}
-.mm-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));
-        box-shadow:0 0 12px rgba(124,92,255,.7)}
-.mm-links{display:flex;gap:8px;flex-wrap:wrap}
-.mm-links a{text-decoration:none;color:#E8EAEE;font-weight:700;padding:8px 11px;border:1px solid var(--ring);
-            border-radius:12px;background:rgba(255,255,255,.02);transition:transform .18s ease}
-.mm-links a:hover{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.03)}
-@media (max-width:720px){ .mm-links a{padding:6px 9px} }
+/* Wrapper */
+.mm-nav{position:sticky;top:0;inset-inline:0;z-index:1000;}
+/* Bar */
+.mm-bar{
+  background: color-mix(in oklab, var(--bg) 80%, transparent);
+  -webkit-backdrop-filter: saturate(160%) blur(10px);
+  backdrop-filter: saturate(160%) blur(10px);
+  border-bottom:1px solid var(--ring);
+  transition: background .22s cubic-bezier(.22,.95,.57,1.01), box-shadow .22s, border-color .22s;
+}
+.mm-bar.scrolled{ background: var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,.25); border-bottom-color: transparent; }
+.mm-inner{max-width:1180px;margin:0 auto;padding:10px 8px;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+/* Brand */
+.mm-brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;text-decoration:none}
+.mm-dot{width:10px;height:10px;border-radius:50%;
+  background:linear-gradient(90deg,var(--g1),var(--g2));
+  box-shadow:0 0 12px color-mix(in oklab, var(--g1) 60%, transparent);
+}
+/* Links row */
+.mm-menu{display:flex;align-items:center;gap:10px}
+.mm-links{position:relative;display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px}
+.mm-link{
+  --padx:.9rem;
+  display:inline-flex;align-items:center;justify-content:center;height:40px;
+  padding:0 var(--padx);border-radius:999px;text-decoration:none;
+  color:var(--mut);font-weight:800;transition:color .16s, transform .16s;
+}
+.mm-link:hover{ color:var(--ink); transform:translateY(-1px); }
+/* Sliding indicator “pill” */
+.mm-indicator{
+  position:absolute; left:0; bottom:3px; height:34px; border-radius:999px;
+  background:rgba(255,255,255,.06); border:1px solid var(--ring);
+  transition: width .22s cubic-bezier(.22,.95,.57,1.01), transform .22s cubic-bezier(.22,.95,.57,1.01), opacity .22s;
+  transform: translateX(0); opacity:0; z-index:-1;
+}
+.mm-link.is-active ~ .mm-indicator{ opacity:1; }
+/* CTA */
+.mm-cta{
+  display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 1rem;
+  border-radius:999px;text-decoration:none;font-weight:800;color:#0B0D12;
+  background:linear-gradient(90deg,var(--g1),var(--g2)); border:1px solid var(--ring);
+  box-shadow:0 8px 20px rgba(0,0,0,.25); transition:transform .16s, box-shadow .16s;
+}
+.mm-cta:hover{ transform:translateY(-1px) scale(1.03); }
+/* Hamburger */
+.mm-toggle{
+  --bar:2px;
+  display:none; position:relative; width:38px; height:38px; border:0; background:transparent; border-radius:12px; cursor:pointer;
+}
+.mm-toggle span{
+  position:absolute; left:8px; right:8px; height:var(--bar); background:var(--ink);
+  border-radius:999px; transition: transform .22s cubic-bezier(.22,.95,.57,1.01), opacity .22s;
+}
+.mm-toggle span:nth-child(1){ top:11px; }
+.mm-toggle span:nth-child(2){ top:18px; }
+mm-toggle span:nth-child(3){ top:25px; }
+/* Mobile menu */
+@media (max-width: 900px){
+  .mm-toggle{ display:block; }
+  .mm-menu{
+    position:fixed; left:0; right:0; top:62px;
+    background:var(--bg);
+    border-bottom:1px solid var(--ring);
+    transform:translateY(-8px); opacity:0; pointer-events:none;
+    flex-direction:column; align-items:stretch; gap:.5rem; padding:.75rem 1rem 1rem;
+    transition: opacity .22s, transform .22s;
+  }
+  .mm-menu.open{ transform:translateY(0); opacity:1; pointer-events:auto; }
+  .mm-links{ justify-content:center; }
+  .mm-link{ height:44px; }
+  .mm-cta{ height:44px; }
+}
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce){
+  .mm-bar, .mm-bar *{ transition:none !important; animation:none !重要; }
+}
 </style>
-<div class="mm-navwrap"><div class="mm-nav">
-  <div class="mm-brand"><div class="mm-dot"></div><div>MindMate</div></div>
-  <div class="mm-links">
-    <a href="?landing">Welcome</a><a href="?home">Početna</a><a href="?chat">Chat</a>
-    <a href="?checkin">Check-in</a><a href="?analytics">Analitika</a>
+<div class="mm-nav">
+  <div class="mm-bar" id="mmBar">
+    <div class="mm-inner">
+      <a class="mm-brand" href="?landing"><div class="mm-dot"></div><div>MindMate</div></a>
+      <button class="mm-toggle" id="mmToggle" aria-label="Open menu" aria-expanded="false" aria-controls="mmMenu">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="mm-menu" id="mmMenu" aria-label="Glavna navigacija">
+        <div class="mm-links" id="mmLinks">
+          <a class="mm-link" href="?landing" data-page="landing">Welcome</a>
+          <a class="mm-link" href="?home" data-page="home">Početna</a>
+          <a class="mm-link" href="?chat" data-page="chat">Chat</a>
+          <a class="mm-link" href="?checkin" data-page="checkin">Check-in</a>
+          <a class="mm-link" href="?analytics" data-page="analytics">Analitika</a>
+          <span class="mm-indicator" id="mmIndicator" aria-hidden="true"></span>
+        </div>
+        <a class="mm-cta" href="?home">Kreni odmah</a>
+      </nav>
+    </div>
   </div>
-</div></div>
+</div>
+<script>
+(function(){
+  const bar = document.getElementById('mmBar');
+  const toggle = document.getElementById('mmToggle');
+  const menu = document.getElementById('mmMenu');
+  const linksWrap = document.getElementById('mmLinks');
+  const indicator = document.getElementById('mmIndicator');
+  const links = [...document.querySelectorAll('.mm-link')];
+  // Solid bg on scroll
+  const onScroll = () => bar.classList.toggle('scrolled', window.scrollY > 8);
+  onScroll(); addEventListener('scroll', onScroll, {passive:true});
+  // Active by query param
+  const qs = new URLSearchParams(location.search);
+  const key = ['landing','home','chat','checkin','analytics'].find(k => qs.has(k)) || 'landing';
+  const active = links.find(a => a.dataset.page === key) || links[0];
+  active.classList.add('is-active');
+  // Indicator move
+  function moveIndicator(el){
+    if(!el || !indicator) return;
+    const r = el.getBoundingClientRect();
+    const rw = linksWrap.getBoundingClientRect();
+    indicator.style.opacity = '1';
+    indicator.style.width = r.width + 'px';
+    indicator.style.transform = `translateX(${r.left - rw.left}px)`;
+  }
+  moveIndicator(active);
+  links.forEach(a=>{
+    a.addEventListener('mouseenter', ()=> moveIndicator(a));
+    a.addEventListener('focus', ()=> moveIndicator(a));
+    a.addEventListener('click', ()=>{
+      links.forEach(l=>l.classList.remove('is-active'));
+      a.classList.add('is-active'); moveIndicator(a);
+      if(menu.classList.contains('open')) setMenu(false);
+    });
+  });
+  linksWrap.addEventListener('mouseleave', ()=> moveIndicator(document.querySelector('.mm-link.is-active')));
+  // Mobile hamburger → X
+  function setMenu(open){
+    menu.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', open);
+    const [a,b,c] = toggle.querySelectorAll('span');
+    if(open){
+      a.style.transform = 'translateY(7px) rotate(45deg)';
+      b.style.opacity = '0';
+      c.style.transform = 'translateY(-7px) rotate(-45deg)';
+      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el,i)=>{
+        el.style.transition = 'transform .22s, opacity .22s';
+        el.style.transitionDelay = (i*40)+'ms';
+        el.style.transform = 'translateY(0)';
+        el.style.opacity = '1';
+      });
+    }else{
+      a.style.transform = ''; b.style.opacity = ''; c.style.transform = '';
+      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el)=>{
+        el.style.transition = ''; el.style.transitionDelay = ''; el.style.transform = ''; el.style.opacity = '';
+      });
+    }
+  }
+  toggle?.addEventListener('click', ()=> setMenu(!menu.classList.contains('open')));
+  menu?.addEventListener('click', e => { if(e.target.closest('a')) setMenu(false); });
+  addEventListener('keydown', e => { if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); });
+  // Reposition on resize
+  let rAF=null; addEventListener('resize', ()=>{ cancelAnimationFrame(rAF); rAF=requestAnimationFrame(()=>moveIndicator(document.querySelector('.mm-link.is-active')||active)); });
+})();
+</script>
 """, unsafe_allow_html=True)
 
 qp=st.query_params
@@ -583,13 +726,11 @@ LANDING = """
 // Reveal
 const ob=new IntersectionObserver(es=>es.forEach(x=>x.isIntersecting&&x.target.classList.add('v')),{threshold:.2});
 document.querySelectorAll('.reveal').forEach(el=>ob.observe(el));
-
 // KPI count-up
 function cu(el){const t=parseInt(el.getAttribute('data-k'))||0,d=1200,s=performance.now();
 function tick(n){const p=Math.min((n-s)/d,1);el.textContent=Math.floor(t*(.15+.85*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)} requestAnimationFrame(tick)}
 const ko=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.knum').forEach(cu);ko.unobserve(x.target)}}),{threshold:.3});
 document.querySelectorAll('.kpis').forEach(el=>ko.observe(el));
-
 // Chart
 const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=320,P=44,ymin=0,ymax=100;
 const grid=document.getElementById('grid'), xg=document.getElementById('xlabels'), svg=document.getElementById('mmChart');
@@ -603,12 +744,10 @@ const prodPath=document.getElementById('prodPath'), moodPath=document.getElement
 function sAnim(p,d=1300){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
 const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){sAnim(prodPath,1200);setTimeout(()=>sAnim(moodPath,1500),150);cio.unobserve(svg)}})},{threshold:.35});
 cio.observe(svg);
-
 // Testimonials slider
 (function(){const rail=document.getElementById('trail'); if(!rail) return; let i=0; const cards=rail.children.length;
 function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+16)}px)`;}
-document.getElementById('prev').onclick=()=>go(-1); document.getElementById('next').onclick=()=>go(1);})();
-
+document.getElementById('prev').onclick=()=>go(-1);document.getElementById('next').onclick=()=>go(1);})();
 // FAQ logic
 document.querySelectorAll('.faq-item').forEach(item=>{
   const btn=item.querySelector('.faq-q');
