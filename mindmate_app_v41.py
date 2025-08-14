@@ -162,7 +162,6 @@ def chat_ollama(messages):
     except Exception as e:
         return f"[Greška Ollama: {e}]"
 
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mindmate_app_v41.py b/mindmate_app_v41.py
 index 294fe0f42fd270b1df5f16cf1236c91cc3a64c73..9107ad911aae88c994f1319435d43447241b0d50 100644
 --- a/mindmate_app_v41.py
@@ -452,6 +451,243 @@ index 294fe0f42fd270b1df5f16cf1236c91cc3a64c73..9107ad911aae88c994f1319435d43447
      </div>
 -  </div>
 -</div>
+ 
+-<script>
+-(function(){
+-  const bar = document.getElementById('mmBar');
+-  const toggle = document.getElementById('mmToggle');
+-  const menu = document.getElementById('mmMenu');
+-  const linksWrap = document.getElementById('mmLinks');
+-  const indicator = document.getElementById('mmIndicator');
+-  const links = [...document.querySelectorAll('.mm-link')];
+-  const prog = document.getElementById('mmProgBar');
+-
+-  // 1) Solid bg + progress on scroll
+-  const onScroll = () => {
+-    bar.classList.toggle('scrolled', window.scrollY > 8);
+-    const h = document.documentElement;
+-    const max = (h.scrollHeight - h.clientHeight) || 1;
+-    const p = Math.max(0, Math.min(1, h.scrollTop / max));
+-    prog.style.width = (p*100).toFixed(1) + '%';
+-  };
+-  onScroll(); addEventListener('scroll', onScroll, {passive:true});
+-
+-  // 2) Active page from query
+-  const qs = new URLSearchParams(location.search);
+-  const key = ['landing','home','chat','checkin','analytics'].find(k => qs.has(k)) || 'landing';
+-  const active = links.find(a => a.dataset.page === key) || links[0];
+-  active.classList.add('is-active');
+-
+-  // 3) Spring indicator
+-  let targetX = 0, targetW = 0;
+-  let x = 0, w = 0, vx = 0, vw = 0;
+-  const stiffness = 0.18, damping = 0.75;
+-  function measure(el){
+-    const r = el.getBoundingClientRect();
+-    const rw = linksWrap.getBoundingClientRect();
+-    targetX = r.left - rw.left;
+-    targetW = r.width;
+-    indicator.style.opacity = '1';
+-    indicator.style.transform = `translateX(${x}px)`;
+-    indicator.style.width = w + 'px';
+-  }
+-  function animate(){
+-    const ax = (targetX - x) * stiffness; vx = (vx + ax) * damping; x += vx;
+-    const aw = (targetW - w) * stiffness; vw = (vw + aw) * damping; w += vw;
+-    indicator.style.transform = `translateX(${x}px)`;
+-    indicator.style.width = w + 'px';
+-    requestAnimationFrame(animate);
+-  }
+-  measure(active); requestAnimationFrame(animate);
+-
+-  links.forEach(a=>{
+-    a.addEventListener('mouseenter', ()=> measure(a));
+-    a.addEventListener('focus', ()=> measure(a));
+-    a.addEventListener('click', ()=>{
+-      links.forEach(l=>l.classList.remove('is-active'));
+-      a.classList.add('is-active'); measure(a);
+-      if(menu.classList.contains('open')) setMenu(false);
+-    });
+-    // 4) Magnet hover
+-    a.addEventListener('mousemove', (e)=>{
+-      const r = a.getBoundingClientRect();
+-      const mx = ((e.clientX - r.left) / r.width)*100;
+-      const my = ((e.clientY - r.top) / r.height)*100;
+-      a.style.transform = `translate(${(mx-50)*.06}px, ${(my-50)*.06}px)`;
+-      a.style.setProperty('--mx', mx+'%'); a.style.setProperty('--my', my+'%');
+-    });
+-    a.addEventListener('mouseleave', ()=>{
+-      a.style.transform = '';
+-      a.style.removeProperty('--mx'); a.style.removeProperty('--my');
+-    });
+-  });
+-  linksWrap.addEventListener('mouseleave', ()=> measure(document.querySelector('.mm-link.is-active')));
+-
+-  // 5) Hamburger → X + stagger items
+-  function setMenu(open){
+-    menu.classList.toggle('open', open);
+-    toggle.setAttribute('aria-expanded', open);
+-    const [a,b,c] = toggle.querySelectorAll('span');
+-    if(open){
+-      a.style.transform = 'translateY(7px) rotate(45deg)';
+-      b.style.opacity = '0';
+-      c.style.transform = 'translateY(-7px) rotate(-45deg)';
+-      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el,i)=>{
+-        el.style.transition = 'transform .22s, opacity .22s';
+-        el.style.transitionDelay = (i*40)+'ms';
+-        el.style.transform = 'translateY(0)';
+-        el.style.opacity = '1';
++    <script>
++    (function(){
++      const bar = document.getElementById('mmBar');
++      const toggle = document.getElementById('mmToggle');
++      const menu = document.getElementById('mmMenu');
++      const linksWrap = document.getElementById('mmLinks');
++      const indicator = document.getElementById('mmIndicator');
++      const links = [...document.querySelectorAll('.mm-link')];
++      const prog = document.getElementById('mmProgBar');
++
++      // 1) Solid bg + progress on scroll
++      const onScroll = () => {
++        bar.classList.toggle('scrolled', window.scrollY > 8);
++        const h = document.documentElement;
++        const max = (h.scrollHeight - h.clientHeight) || 1;
++        const p = Math.max(0, Math.min(1, h.scrollTop / max));
++        prog.style.width = (p*100).toFixed(1) + '%';
++      };
++      onScroll(); addEventListener('scroll', onScroll, {passive:true});
++
++      // 2) Active page from query
++      const qs = new URLSearchParams(location.search);
++      const key = ['landing','home','chat','checkin','analytics'].find(k => qs.has(k)) || 'landing';
++      const active = links.find(a => a.dataset.page === key) || links[0];
++      active.classList.add('is-active');
++
++      // 3) Spring indicator
++      let targetX = 0, targetW = 0;
++      let x = 0, w = 0, vx = 0, vw = 0;
++      const stiffness = 0.18, damping = 0.75;
++      function measure(el){
++        const r = el.getBoundingClientRect();
++        const rw = linksWrap.getBoundingClientRect();
++        targetX = r.left - rw.left;
++        targetW = r.width;
++        indicator.style.opacity = '1';
++        indicator.style.transform = `translateX(${x}px)`;
++        indicator.style.width = w + 'px';
++      }
++      function animate(){
++        const ax = (targetX - x) * stiffness; vx = (vx + ax) * damping; x += vx;
++        const aw = (targetW - w) * stiffness; vw = (vw + aw) * damping; w += vw;
++        indicator.style.transform = `translateX(${x}px)`;
++        indicator.style.width = w + 'px';
++        requestAnimationFrame(animate);
++      }
++      measure(active); requestAnimationFrame(animate);
++
++      links.forEach(a=>{
++        a.addEventListener('mouseenter', ()=> measure(a));
++        a.addEventListener('focus', ()=> measure(a));
++        a.addEventListener('click', ()=>{
++          links.forEach(l=>l.classList.remove('is-active'));
++          a.classList.add('is-active'); measure(a);
++          if(menu.classList.contains('open')) setMenu(false);
++        });
++        // 4) Magnet hover
++        a.addEventListener('mousemove', (e)=>{
++          const r = a.getBoundingClientRect();
++          const mx = ((e.clientX - r.left) / r.width)*100;
++          const my = ((e.clientY - r.top) / r.height)*100;
++          a.style.transform = `translate(${(mx-50)*.06}px, ${(my-50)*.06}px)`;
++          a.style.setProperty('--mx', mx+'%'); a.style.setProperty('--my', my+'%');
++        });
++        a.addEventListener('mouseleave', ()=>{
++          a.style.transform = '';
++          a.style.removeProperty('--mx'); a.style.removeProperty('--my');
++        });
+       });
+-    }else{
+-      a.style.transform = ''; b.style.opacity = ''; c.style.transform = '';
+-      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el)=>{
+-        el.style.transition = ''; el.style.transitionDelay = ''; el.style.transform = ''; el.style.opacity = '';
++      linksWrap.addEventListener('mouseleave', ()=> measure(document.querySelector('.mm-link.is-active')));
++
++      // 5) Hamburger → X + stagger items
++      function setMenu(open){
++        menu.classList.toggle('open', open);
++        toggle.setAttribute('aria-expanded', open);
++        const [a,b,c] = toggle.querySelectorAll('span');
++        if(open){
++          a.style.transform = 'translateY(7px) rotate(45deg)';
++          b.style.opacity = '0';
++          c.style.transform = 'translateY(-7px) rotate(-45deg)';
++          [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el,i)=>{
++            el.style.transition = 'transform .22s, opacity .22s';
++            el.style.transitionDelay = (i*40)+'ms';
++            el.style.transform = 'translateY(0)';
++            el.style.opacity = '1';
++          });
++        }else{
++          a.style.transform = ''; b.style.opacity = ''; c.style.transform = '';
++          [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el)=>{
++            el.style.transition = ''; el.style.transitionDelay = ''; el.style.transform = ''; el.style.opacity = '';
++          });
++        }
++      }
++      toggle?.addEventListener('click', ()=> setMenu(!menu.classList.contains('open')));
++      menu?.addEventListener('click', e => { if(e.target.closest('a')) setMenu(false); });
++      addEventListener('keydown', e => { if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); });
++
++      // 6) Re-measure on resize
++      let raf=null; addEventListener('resize', ()=>{
++        if(raf) cancelAnimationFrame(raf);
++        raf=requestAnimationFrame(()=> measure(document.querySelector('.mm-link.is-active') || active));
+       });
+-    }
+-  }
+-  toggle?.addEventListener('click', ()=> setMenu(!menu.classList.contains('open')));
+-  menu?.addEventListener('click', e => { if(e.target.closest('a')) setMenu(false); });
+-  addEventListener('keydown', e => { if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); });
+-
+-  // 6) Re-measure on resize
+-  let raf=null; addEventListener('resize', ()=>{
+-    if(raf) cancelAnimationFrame(raf);
+-    raf=requestAnimationFrame(()=> measure(document.querySelector('.mm-link.is-active') || active));
+-  });
+-})();
+-</script>
+-""", unsafe_allow_html=True)
++    })();
++    </script>
++    """, unsafe_allow_html=True)
+ 
++render_navbar()
+ # Query params -> router (kao i do sada)
+ qp=st.query_params
+ if   "landing"  in qp: st.session_state.page="landing"
+ elif "home"     in qp: st.session_state.page="home"
+ elif "chat"     in qp: st.session_state.page="chat"
+ elif "checkin"  in qp: st.session_state.page="checkin"
+ elif "analytics"in qp: st.session_state.page="analytics"
+ 
+ # ---------- LANDING (sa PRICING ispod FAQ) ----------
+ LANDING = """
+ <!DOCTYPE html><html><head><meta charset="utf-8"/>
+ <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+ <style>
+ :root{
+   --bg:#0B0D12; --ink:#E8EAEE; --mut:#9AA3B2; --ring:rgba(255,255,255,.10);
+   --g1:#7C5CFF; --g2:#4EA3FF; --MAX:1180px;
+   --s-xl:64px; --s-lg:48px; --s-md:32px; --s-sm:20px;
+ }
+ *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
+ .container{width:min(var(--MAX),92vw);margin:0 auto}
+ .section{padding-block:var(--s-lg)} .section.tight{padding-block:var(--s-md)}
+ .h2{font-size:clamp(22px,2.6vw,30px);margin:0 0 12px 0}
+ .grid-12{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+ .card{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px;transition:transform .2s ease, box-shadow .2s ease}
+ .card:hover{transform:translateY(-2px) scale(1.03); box-shadow:0 14px 48px rgba(0,0,0,.35)}
+
  
 -<script>
 -(function(){
