@@ -25,16 +25,20 @@ st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 # ---------- NAV (Kendo style) ----------
 cur = st.session_state.get("page","landing")
 
-st.markdown(f"""
-<style>
-:root{{ --ring:rgba(255,255,255,.10); --ink:#E8EAEE; --mut:#9AA3B2; }}
-.k-navwrap{{position:sticky;top:0;z-index:9999;background:rgba(12,14,20,.55);
-  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
-  border-bottom:1px solid var(--ring)}}
-.k-nav{{max-width:1180px;margin:0 auto; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px}}
-.k-brand{{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;letter-spacing:.2px}}
-.k-dot{{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,#7C5CFF,#4EA3FF);
-        box-shadow:0 0 14px rgba(124,92,255,.7)}}
+st.markdown("""
+<div class="k-nav">
+    <div class="k-links" id="kLinks">
+        <a class="k-link active" href="#welcome">Welcome</a>
+        <a class="k-link" href="#pocetna">Početna</a>
+        <a class="k-link" href="#chat">Chat</a>
+        <a class="k-link" href="#checkin">Check-in</a>
+        <a class="k-link" href="#analitika">Analitika</a>
+    </div>
+    <button class="k-burger" id="kBurger">☰</button>
+    <a class="k-cta" href="#home">Kreni besplatno</a>
+</div>
+""", unsafe_allow_html=True)
+
 
 .k-links{{display:flex;align-items:center;gap:8px;flex-wrap:wrap}}
 .k-link{{text-decoration:none;color:var(--ink);font-weight:700;padding:8px 12px;border:1px solid var(--ring);
