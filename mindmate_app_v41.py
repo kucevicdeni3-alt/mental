@@ -23,26 +23,244 @@ def safe_rerun():
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 
 # ---------- Global okvir ----------
+# ---------- NAV (Kendo-like animations) ----------
 st.markdown("""
 <style>
-:root{
-  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2;
-  --g1:#7C5CFF; --g2:#4EA3FF; --ring:rgba(255,255,255,.10);
+.mm-root{position:sticky;top:0;inset-inline:0;z-index:1000}
+
+/* Progress bar on top */
+.mm-prog{position:absolute; inset:0 0 auto 0; height:3px; background:transparent; pointer-events:none}
+.mm-prog .bar{height:100%; width:0%;
+  background:linear-gradient(90deg,var(--g1),var(--g2)); box-shadow:0 0 16px color-mix(in oklab,var(--g2) 40%, transparent);
+  transition:width .08s linear}
+
+/* Bar (glass) */
+.mm-bar{
+  position:relative;
+  background: color-mix(in oklab, var(--bg) 78%, transparent);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  backdrop-filter: saturate(160%) blur(12px);
+  border-bottom:1px solid var(--ring);
+  transition: background .22s cubic-bezier(.22,.95,.57,1.01), box-shadow .22s, border-color .22s;
 }
-html,body{background:var(--bg); color:var(--ink)}
-.main .block-container{
-  padding-top:.6rem!important; padding-left:2rem!important; padding-right:2rem!important;
-  max-width:1280px!important; margin-inline:auto!important;
+.mm-bar.scrolled{ background: var(--bg); box-shadow: 0 14px 40px rgba(0,0,0,.28); border-bottom-color: transparent; }
+
+.mm-inner{max-width:1180px;margin:0 auto;padding:10px 10px;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+
+/* Brand */
+.mm-brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;text-decoration:none}
+.mm-dot{width:10px;height:10px;border-radius:50%;
+  background:linear-gradient(90deg,var(--g1),var(--g2));
+  box-shadow:0 0 14px color-mix(in oklab, var(--g1) 60%, transparent);
 }
-@media (max-width:900px){
-  .main .block-container{padding-left:1.2rem!important; padding-right:1.2rem!important}
+
+/* Links row */
+.mm-menu{display:flex;align-items:center;gap:12px}
+.mm-links{position:relative;display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px}
+.mm-link{
+  --padx:1rem;
+  position:relative;
+  display:inline-flex;align-items:center;justify-content:center;height:40px;
+  padding:0 var(--padx);border-radius:999px;text-decoration:none;
+  color:var(--mut);font-weight:800;letter-spacing:.2px;
+  transition:color .16s ease, transform .16s ease;
+  will-change: transform;
 }
-.element-container > div:has(> iframe){display:flex; justify-content:center;}
-.stButton>button[kind="primary"]{
-  background:linear-gradient(90deg,var(--g1),var(--g2))!important;color:#0B0D12!important;
-  font-weight:800!important;border:none!important
+.mm-link:hover{ color:var(--ink); }
+
+/* Magnet hover shimmer */
+.mm-link:after{
+  content:""; position:absolute; inset:2px; border-radius:999px; pointer-events:none;
+  background: radial-gradient(120px 40px at var(--mx,50%) var(--my,50%), rgba(255,255,255,.07), transparent 60%);
+  opacity:0; transition:opacity .18s ease;
+}
+.mm-link:hover:after{ opacity:1; }
+
+/* Sliding indicator w/ gradient border (uses mask) */
+.mm-indicator{
+  position:absolute; left:0; bottom:3px; height:34px; border-radius:999px;
+  background:rgba(255,255,255,.06);
+  border:1px solid var(--ring);
+  outline: 1px solid transparent; /* fixes AA on some GPUs */
+  transform: translateX(0); opacity:0; z-index:-1;
+}
+.mm-link.is-active ~ .mm-indicator{ opacity:1; }
+
+/* CTA */
+.mm-cta{
+  display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 1rem;
+  border-radius:999px;text-decoration:none;font-weight:800;color:#0B0D12;
+  background:linear-gradient(90deg,var(--g1),var(--g2)); border:1px solid var(--ring);
+  box-shadow:0 10px 24px rgba(0,0,0,.28); transition:transform .16s, box-shadow .16s, filter .16s;
+}
+.mm-cta:hover{ transform:translateY(-1px) scale(1.03); }
+
+/* Hamburger */
+.mm-toggle{
+  --bar:2px;
+  display:none; position:relative; width:38px; height:38px; border:0; background:transparent; border-radius:12px; cursor:pointer;
+}
+.mm-toggle span{
+  position:absolute; left:8px; right:8px; height:var(--bar); background:var(--ink);
+  border-radius:999px; transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s;
+}
+.mm-toggle span:nth-child(1){ top:11px; }
+.mm-toggle span:nth-child(2){ top:18px; }
+.mm-toggle span:nth-child(3){ top:25px; }
+@keyframes popIn{from{transform:translateY(6px);opacity:0} to{transform:none;opacity:1}}
+
+/* Mobile menu */
+@media (max-width: 900px){
+  .mm-toggle{ display:block; }
+  .mm-menu{
+    position:fixed; left:0; right:0; top:62px;
+    background:var(--bg);
+    border-bottom:1px solid var(--ring);
+    transform:translateY(-10px); opacity:0; pointer-events:none;
+    flex-direction:column; align-items:stretch; gap:.5rem; padding:.75rem 1rem 1rem;
+    transition: opacity .25s, transform .25s;
+  }
+  .mm-menu.open{ transform:translateY(0); opacity:1; pointer-events:auto; }
+  .mm-links{ justify-content:center; }
+  .mm-link{ height:44px; }
+  .mm-cta{ height:44px; animation:popIn .28s both }
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce){
+  .mm-bar, .mm-bar *{ transition:none !important; animation:none !important; }
 }
 </style>
+
+<div class="mm-root">
+  <div class="mm-bar" id="mmBar">
+    <div class="mm-prog"><div class="bar" id="mmProgBar"></div></div>
+    <div class="mm-inner">
+      <a class="mm-brand" href="?landing"><div class="mm-dot"></div><div>MindMate</div></a>
+
+      <button class="mm-toggle" id="mmToggle" aria-label="Open menu" aria-expanded="false" aria-controls="mmMenu">
+        <span></span><span></span><span></span>
+      </button>
+
+      <nav class="mm-menu" id="mmMenu" aria-label="Glavna navigacija">
+        <div class="mm-links" id="mmLinks">
+          <a class="mm-link" href="?landing"  data-page="landing">Welcome</a>
+          <a class="mm-link" href="?home"     data-page="home">Početna</a>
+          <a class="mm-link" href="?chat"     data-page="chat">Chat</a>
+          <a class="mm-link" href="?checkin"  data-page="checkin">Check-in</a>
+          <a class="mm-link" href="?analytics"data-page="analytics">Analitika</a>
+          <span class="mm-indicator" id="mmIndicator" aria-hidden="true"></span>
+        </div>
+        <a class="mm-cta" href="?home">Kreni odmah</a>
+      </nav>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const bar = document.getElementById('mmBar');
+  const toggle = document.getElementById('mmToggle');
+  const menu = document.getElementById('mmMenu');
+  const linksWrap = document.getElementById('mmLinks');
+  const indicator = document.getElementById('mmIndicator');
+  const links = [...document.querySelectorAll('.mm-link')];
+  const prog = document.getElementById('mmProgBar');
+
+  // 1) Solid bg + progress on scroll
+  const onScroll = () => {
+    bar.classList.toggle('scrolled', window.scrollY > 8);
+    const h = document.documentElement;
+    const max = (h.scrollHeight - h.clientHeight) || 1;
+    const p = Math.max(0, Math.min(1, h.scrollTop / max));
+    prog.style.width = (p*100).toFixed(1) + '%';
+  };
+  onScroll(); addEventListener('scroll', onScroll, {passive:true});
+
+  // 2) Active page from query
+  const qs = new URLSearchParams(location.search);
+  const key = ['landing','home','chat','checkin','analytics'].find(k => qs.has(k)) || 'landing';
+  const active = links.find(a => a.dataset.page === key) || links[0];
+  active.classList.add('is-active');
+
+  // 3) Spring indicator (Kendo-like)
+  let targetX = 0, targetW = 0;
+  let x = 0, w = 0, vx = 0, vw = 0;
+  const stiffness = 0.18, damping = 0.75; // feel free to tweak
+  function measure(el){
+    const r = el.getBoundingClientRect();
+    const rw = linksWrap.getBoundingClientRect();
+    targetX = r.left - rw.left;
+    targetW = r.width;
+    indicator.style.opacity = '1';
+    indicator.style.transform = `translateX(${x}px)`;
+    indicator.style.width = w + 'px';
+  }
+  function animate(){
+    const ax = (targetX - x) * stiffness; vx = (vx + ax) * damping; x += vx;
+    const aw = (targetW - w) * stiffness; vw = (vw + aw) * damping; w += vw;
+    indicator.style.transform = `translateX(${x}px)`;
+    indicator.style.width = w + 'px';
+    requestAnimationFrame(animate);
+  }
+  measure(active); requestAnimationFrame(animate);
+
+  links.forEach(a=>{
+    a.addEventListener('mouseenter', ()=> measure(a));
+    a.addEventListener('focus', ()=> measure(a));
+    a.addEventListener('click', ()=>{
+      links.forEach(l=>l.classList.remove('is-active'));
+      a.classList.add('is-active'); measure(a);
+      if(menu.classList.contains('open')) setMenu(false);
+    });
+    // 4) Magnet hover (moves a few px toward cursor)
+    a.addEventListener('mousemove', (e)=>{
+      const r = a.getBoundingClientRect();
+      const mx = ((e.clientX - r.left) / r.width)*100;
+      const my = ((e.clientY - r.top) / r.height)*100;
+      a.style.transform = `translate(${(mx-50)*.06}px, ${(my-50)*.06}px)`;
+      a.style.setProperty('--mx', mx+'%'); a.style.setProperty('--my', my+'%');
+    });
+    a.addEventListener('mouseleave', ()=>{
+      a.style.transform = '';
+      a.style.removeProperty('--mx'); a.style.removeProperty('--my');
+    });
+  });
+  linksWrap.addEventListener('mouseleave', ()=> measure(document.querySelector('.mm-link.is-active')));
+
+  // 5) Hamburger → X + stagger items
+  function setMenu(open){
+    menu.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', open);
+    const [a,b,c] = toggle.querySelectorAll('span');
+    if(open){
+      a.style.transform = 'translateY(7px) rotate(45deg)';
+      b.style.opacity = '0';
+      c.style.transform = 'translateY(-7px) rotate(-45deg)';
+      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el,i)=>{
+        el.style.transition = 'transform .22s, opacity .22s';
+        el.style.transitionDelay = (i*40)+'ms';
+        el.style.transform = 'translateY(0)';
+        el.style.opacity = '1';
+      });
+    }else{
+      a.style.transform = ''; b.style.opacity = ''; c.style.transform = '';
+      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el)=>{
+        el.style.transition = ''; el.style.transitionDelay = ''; el.style.transform = ''; el.style.opacity = '';
+      });
+    }
+  }
+  toggle?.addEventListener('click', ()=> setMenu(!menu.classList.contains('open')));
+  menu?.addEventListener('click', e => { if(e.target.closest('a')) setMenu(false); });
+  addEventListener('keydown', e => { if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); });
+
+  // 6) Re-measure on resize (debounced by rAF)
+  let raf=null; addEventListener('resize', ()=>{
+    if(raf) cancelAnimationFrame(raf);
+    raf=requestAnimationFrame(()=> measure(document.querySelector('.mm-link.is-active') || active));
+  });
+})();
+</script>
 """, unsafe_allow_html=True)
 
 # ---------- “Baza” ----------
