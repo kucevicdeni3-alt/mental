@@ -1,4 +1,4 @@
-# app.py — MindMate (Kendo-style navbar, premium landing, BIG FAQ + PRICING + Početna/Chat/Check-in/Analitika)
+# app.py — MindMate landing + BIG FAQ + PRICING (Free/Pro) + Početna/Chat/Check-in/Analitika
 
 import os, json, requests, math
 import streamlit as st
@@ -18,213 +18,129 @@ OPENAI_API_KEY= os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL  = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
 def safe_rerun():
-    if hasattr(st, "rerun"):
-        st.rerun()
-    else:
-        st.experimental_rerun()
+    if hasattr(st, "rerun"): st.rerun()
+    else: st.experimental_rerun()
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
+# ---------- NAV (Kendo style) ----------
+cur = st.session_state.get("page","landing")
 
-# ---------- Global stil ----------
+st.markdown(f"""
+<style>
+:root{{ --ring:rgba(255,255,255,.10); --ink:#E8EAEE; --mut:#9AA3B2; }}
+.k-navwrap{{position:sticky;top:0;z-index:9999;background:rgba(12,14,20,.55);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--ring)}}
+.k-nav{{max-width:1180px;margin:0 auto; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px}}
+.k-brand{{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;letter-spacing:.2px}}
+.k-dot{{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,#7C5CFF,#4EA3FF);
+        box-shadow:0 0 14px rgba(124,92,255,.7)}}
+
+.k-links{{display:flex;align-items:center;gap:8px;flex-wrap:wrap}}
+.k-link{{text-decoration:none;color:var(--ink);font-weight:700;padding:8px 12px;border:1px solid var(--ring);
+  border-radius:12px;background:rgba(255,255,255,.03);transition:transform .18s ease, border-color .18s ease, background .18s}}
+.k-link:hover{{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.03)}}
+.k-link.active{{background:linear-gradient(90deg,#7C5CFF,#4EA3FF); color:#0B0D12}}
+
+.k-cta{{text-decoration:none;font-weight:800;padding:10px 14px;border-radius:12px;border:1px solid var(--ring);
+  background:linear-gradient(90deg,#7C5CFF,#4EA3FF); color:#0B0D12}}
+
+.k-burger{{display:none; width:38px;height:38px;border-radius:10px;border:1px solid var(--ring);
+  background:rgba(255,255,255,.04); color:var(--ink); font-weight:900}}
+@media (max-width:820px){{
+  .k-links{{display:none}}
+  .k-burger{{display:grid;place-items:center}}
+}}
+/* mobilni meni */
+.k-drawer{{position:fixed; inset:56px 10px auto 10px; background:#0F1219; border:1px solid var(--ring);
+  border-radius:14px; padding:10px; display:none; flex-direction:column; gap:8px; z-index:99999}}
+.k-drawer .k-link{{display:block}}
+.k-drawer.show{{display:flex}}
+
+/* glatko scrollanje kad postoje hash linkovi */
+html{{scroll-behavior:smooth}}
+</style>
+
+<div class="k-navwrap">
+  <div class="k-nav">
+    <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
+
+    <div class="k-links" id="kLinks">
+      <a class="k-link {'active' if cur=='landing' else ''}"   href="?landing">Welcome</a>
+      <a class="k-link {'active' if cur=='home' else ''}"      href="?home">Početna</a>
+      <a class="k-link {'active' if cur=='chat' else ''}"      href="?chat">Chat</a>
+      <a class="k-link {'active' if cur=='checkin' else ''}"   href="?checkin">Check-in</a>
+      <a class="k-link {'active' if cur=='analytics' else ''}" href="?analytics">Analitika</a>
+    </div>
+
+    <button class="k-burger" id="kBurger">≡</button>
+    <a class="k-cta" href="?home">Kreni besplatno</a>
+  </div>
+
+  <div class="k-drawer" id="kDrawer">
+    <a class="k-link {'active' if cur=='landing' else ''}"   href="?landing">Welcome</a>
+    <a class="k-link {'active' if cur=='home' else ''}"      href="?home">Početna</a>
+    <a class="k-link {'active' if cur=='chat' else ''}"      href="?chat">Chat</a>
+    <a class="k-link {'active' if cur=='checkin' else ''}"   href="?checkin">Check-in</a>
+    <a class="k-link {'active' if cur=='analytics' else ''}" href="?analytics">Analitika</a>
+  </div>
+</div>
+
+<script>
+(function(){{
+  const burger = document.getElementById('kBurger');
+  const drawer = document.getElementById('kDrawer');
+  burger && burger.addEventListener('click', ()=> drawer.classList.toggle('show'));
+
+  // zatvori drawer na klik linka
+  drawer && drawer.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>drawer.classList.remove('show')));
+
+  // highlight aktivnog linka i pri hash scrollu (ako je na istoj strani)
+  document.querySelectorAll('.k-link[href^="#"]').forEach(a => {{
+    a.addEventListener('click', (e) => {{
+      const id = a.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if(el) {{
+        e.preventDefault();
+        el.scrollIntoView({{behavior:'smooth', block:'start'}});
+        document.querySelectorAll('.k-link').forEach(x=>x.classList.remove('active'));
+        a.classList.add('active');
+      }}
+    }});
+  }});
+
+  // dodaj tamniju pozadinu kad se skroluje (Kendo feel)
+  const wrap = document.querySelector('.k-navwrap');
+  const onScroll = () => {{
+    if(window.scrollY>40) wrap.style.background='rgba(12,14,20,.78)';
+    else wrap.style.background='rgba(12,14,20,.55)';
+  }};
+  window.addEventListener('scroll', onScroll, {{passive:true}});
+  onScroll();
+}})();
+</script>
+""", unsafe_allow_html=True)
+
+
+# ---------- Global okvir ----------
 st.markdown("""
 <style>
 :root{
-  --bg:#0B0D12; --bg-2:#0B0E15; --bg-3:#0B0D13; --panel:#0F1219;
-  --ink:#E8EAEE; --mut:#A4AEC0; --ring:rgba(255,255,255,.10);
-  --g1:#7C5CFF; --g2:#4EA3FF; --g3:#00E0FF; --warn:#FFE28B;
-  --max:1280px;
+  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2;
+  --g1:#7C5CFF; --g2:#4EA3FF; --ring:rgba(255,255,255,.10);
 }
 html,body{background:var(--bg); color:var(--ink)}
 .main .block-container{
-  padding-top:0!important; padding-left:0!important; padding-right:0!important;
-  max-width:unset!important;
+  padding-top:.6rem!important; padding-left:2rem!important; padding-right:2rem!important;
+  max-width:1280px!important; margin-inline:auto!important;
 }
-section.mm-wrap{width:100%; display:block;}
-.mm-container{max-width:var(--max); margin:0 auto; padding:0 20px;}
-/* global btns */
-.mm-btn{display:inline-flex; align-items:center; gap:8px; padding:12px 16px; border-radius:14px;
-  border:1px solid var(--ring); text-decoration:none; font-weight:800; transition:transform .22s ease, box-shadow .22s ease}
-.mm-btn:hover{transform:translateY(-1px) scale(1.02)}
-.mm-btn.primary{background:linear-gradient(90deg,var(--g1),var(--g2)); color:#0B0D12}
-.mm-btn.ghost{background:rgba(255,255,255,.06); color:var(--ink)}
-/* slow reveal */
-.reveal{opacity:0; transform:translateY(22px); transition:opacity 1.3s ease, transform 1.3s ease}
-.reveal.v{opacity:1; transform:translateY(0)}
-/* bg stripes per section (theme shift on scroll) */
-.mm-section{position:relative; padding:64px 0; background:radial-gradient(80% 100% at 50% 0%, rgba(124,92,255,.10), transparent 50%), var(--bg)}
-.mm-section.alt{background:radial-gradient(80% 100% at 50% 0%, rgba(78,163,255,.12), transparent 50%), var(--bg-2)}
-.mm-section.alt2{background:radial-gradient(80% 100% at 50% 0%, rgba(0,224,255,.12), transparent 50%), var(--bg-3)}
-/* cards */
-.mm-card{background:var(--panel); border:1px solid var(--ring); border-radius:18px; padding:18px;
-  transition:transform .22s ease, box-shadow .22s ease}
-.mm-card:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 16px 60px rgba(0,0,0,.45)}
-/* grid helpers */
-.grid{display:grid; gap:18px}
-.g12{grid-template-columns:repeat(12,1fr)}
-.span-12{grid-column:span 12}
-.span-6{grid-column:span 6}
-.span-4{grid-column:span 4}
-.span-3{grid-column:span 3}
-@media (max-width:1024px){ .span-6,.span-4,.span-3{grid-column:span 12} .g12{grid-template-columns:repeat(12,1fr)} }
-/* headings */
-.h-eyebrow{display:inline-flex; gap:8px; align-items:center; padding:7px 12px; border-radius:999px; border:1px solid var(--ring);
-  background:rgba(255,255,255,.05); color:#C7CEDA; font-size:12px; letter-spacing:.3px}
-.h-title{font-size:clamp(28px,4.8vw,56px); line-height:1.06; margin:10px 0 6px}
-.h-sub{color:var(--mut); margin:0 0 10px}
-.h2{font-size:clamp(22px,2.6vw,30px); margin:0 0 14px}
-
-/* ---------- KENDO-STYLE NAVBAR ---------- */
-.mm-top{position:sticky; top:0; z-index:1000; pointer-events:none}
-.k-nav-shell{pointer-events:auto; position:relative; margin:0 auto; max-width:var(--max); padding:10px 20px}
-.k-nav{display:flex; align-items:center; justify-content:space-between; gap:12px;
-  background:rgba(13,16,23,.65); border:1px solid var(--ring);
-  border-radius:16px; padding:8px 10px; backdrop-filter:blur(14px);
-  transition:transform .35s ease, box-shadow .35s ease, background .35s ease}
-.k-left{display:flex; align-items:center; gap:10px; font-weight:900}
-.k-dot{width:10px; height:10px; border-radius:50%;
-  background:conic-gradient(from 0deg, var(--g1), var(--g2), var(--g3), var(--g1));
-  box-shadow:0 0 12px rgba(124,92,255,.7)}
-.k-mid{display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.04);
-  border:1px solid var(--ring); border-radius:12px; padding:4px}
-.k-tab{position:relative; display:inline-flex; align-items:center; justify-content:center;
-  padding:8px 12px; border-radius:10px; color:#E8EAEE; text-decoration:none; font-weight:800; letter-spacing:.2px;
-  transition:transform .18s ease}
-.k-tab:hover{transform:translateY(-1px)}
-.k-underline{position:absolute; height:2px; background:linear-gradient(90deg,var(--g1),var(--g2));
-  bottom:-2px; left:0; width:100%; border-radius:2px; opacity:.9}
-.k-cta{display:inline-flex; align-items:center; gap:8px; padding:10px 12px; border-radius:12px; font-weight:900;
-  border:1px solid var(--ring); background:linear-gradient(90deg,var(--g1),var(--g2)); color:#0B0D12; text-decoration:none}
-.k-shadow{position:absolute; inset:-14px -14px -14px -14px; border-radius:22px; z-index:-1;
-  background:radial-gradient(60% 50% at 20% 10%, rgba(124,92,255,.18), transparent 60%),
-             radial-gradient(60% 50% at 80% 20%, rgba(78,163,255,.18), transparent 60%)}
-.k-hide{transform:translateY(-120%); box-shadow:none}
-.k-show{transform:translateY(0)}
-/* active pill feedback like Kendo */
-.k-tab[data-active="true"]{background:rgba(255,255,255,.08)}
-
-/* ---------- HERO ---------- */
-.hero{display:grid; grid-template-columns:1.1fr .9fr; gap:28px; align-items:center}
-@media (max-width:1024px){ .hero{grid-template-columns:1fr} }
-.mira{display:flex; justify-content:center}
-#flower{width:min(420px,72vw); filter:drop-shadow(0 14px 42px rgba(124,92,255,.35))}
-#flower .p{transform-origin:50% 50%; animation:sway 6.6s ease-in-out infinite}
-#flower .c{animation:pulse 6s ease-in-out infinite}
-@keyframes sway{0%{transform:rotate(0)} 50%{transform:rotate(2.2deg)} 100%{transform:rotate(0)}}
-@keyframes pulse{0%,100%{opacity:.85} 50%{opacity:1}}
-
-/* ---------- VSL + GLOW ORB ---------- */
-.vsl-wrap{position:relative}
-.orb{
-  position:absolute; inset:-200px 0 0 0; margin:auto; z-index:0;
-  width:min(1020px,92vw); height:min(1020px,92vw);
-  background:
-   radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.55), transparent 62%),
-   radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.50), transparent 66%),
-   radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.22), transparent 70%);
-  filter: blur(28px) saturate(1.05); opacity:.9; animation:orbBreath 12s ease-in-out infinite;
+@media (max-width:900px){
+  .main .block-container{padding-left:1.2rem!important; padding-right:1.2rem!important}
 }
-@keyframes orbBreath{0%,100%{transform:scale(1)} 50%{transform:scale(1.04)}}
-.vsl{position:relative; z-index:1; max-width:1020px; margin:0 auto; border-radius:16px; border:1px solid var(--ring);
-  padding:10px; background:rgba(255,255,255,.05); box-shadow:0 28px 90px rgba(0,0,0,.65)}
-.vsl iframe{width:100%; aspect-ratio:16/9; height:auto; min-height:240px; border:0; border-radius:10px}
-
-/* ---------- TRUSTED BY ---------- */
-.trusted{display:flex; flex-direction:column; gap:10px; align-items:center; margin-top:14px}
-.logos{display:flex; gap:16px; flex-wrap:wrap; justify-content:center}
-.logo{width:120px; height:44px; border-radius:12px; border:1px solid var(--ring);
-  background:rgba(255,255,255,.04); display:flex; align-items:center; justify-content:center;
-  color:#C7CEDA; font-weight:800; letter-spacing:.4px; transition:transform .2s}
-.logo:hover{transform:translateY(-2px)}
-
-/* ---------- FEATURE 3-UP ---------- */
-.f3 .mm-card{min-height:120px}
-
-/* ---------- COMPARE ---------- */
-.compare{display:grid; grid-template-columns:1fr 1fr; gap:18px}
-@media (max-width:1024px){ .compare{grid-template-columns:1fr} }
-
-/* ---------- DEMO CHART (SVG) ---------- */
-.chart-wrap{background:var(--panel); border:1px solid var(--ring); border-radius:16px; padding:18px}
-.legend{display:flex; gap:12px; align-items:center; color:#C7CEDA; margin-bottom:6px}
-.dot{width:12px; height:12px; border-radius:50%}
-.dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
-
-/* ---------- KPIs ---------- */
-.kpis .mm-card{text-align:center}
-.knum{font-size:clamp(22px,3vw,30px); font-weight:900;
-  background:linear-gradient(90deg,var(--g1),var(--g2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent}
-.kcap{color:var(--mut)}
-
-/* ---------- INTEGRATIONS ---------- */
-.int .mm-card{text-align:center; color:#C7CEDA}
-
-/* ---------- TESTIMONIALS (carousel) ---------- */
-.twrap{border:1px solid var(--ring); border-radius:16px; padding:16px; background:var(--panel); position:relative; overflow:hidden}
-.trail{display:flex; gap:16px; transition:transform .45s ease}
-.tcard{min-width:calc(33.33% - 10.6px); background:rgba(255,255,255,.04); border:1px solid var(--ring); border-radius:12px; padding:14px}
-.tnav{position:absolute; top:50%; left:8px; right:8px; display:flex; justify-content:space-between; transform:translateY(-50%)}
-.tbtn{padding:7px 10px; border-radius:12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); cursor:pointer; transition:transform .18s}
-.tbtn:hover{transform:scale(1.06)}
-@media (max-width:1024px){ .tcard{min-width:calc(100% - 10.6px)} }
-
-/* ---------- BIG FAQ ---------- */
-.faq-zone{position:relative; overflow:hidden; border-radius:20px; border:1px solid var(--ring);
-  background:linear-gradient(180deg,#0F1219, #0E131A 55%, #0C1016)}
-.faq-clouds:before, .faq-clouds:after{
-  content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
-  background:
-    radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
-    radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
-    radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
-  filter:blur(12px); opacity:.7; animation:cloudFloat 26s linear infinite;
-}
-.faq-clouds:after{ inset:auto -25% -45% -25%; animation-duration:32s; opacity:.55 }
-@keyframes cloudFloat{0%{transform:translateX(-6%)} 50%{transform:translateX(6%)} 100%{transform:translateX(-6%)}}
-
-.faq-header{text-align:center; padding:28px 16px 10px}
-.badge{display:inline-flex; gap:6px; align-items:center; color:#C7CEDA; font-size:13px; padding:7px 12px; border:1px solid var(--ring);
-  border-radius:999px; background:rgba(255,255,255,.05)}
-.faq-title{font-size:clamp(26px,4.2vw,44px); margin:8px 0 6px 0}
-.faq-sub{color:#A7B0BE; max-width:860px; margin:0 auto 18px}
-
-.faq{max-width:920px; margin:0 auto 26px; background:transparent; border:0}
-.faq-item{border:1px solid var(--ring); border-radius:14px; background:#0F1219; margin:12px 0; overflow:hidden;
-  box-shadow:0 10px 26px rgba(0,0,0,.25); transition:transform .18s ease, box-shadow .18s ease}
-.faq-item:hover{transform:translateY(-1px); box-shadow:0 14px 36px rgba(0,0,0,.33)}
-.faq-q{width:100%; text-align:left; background:none; border:none; color:#E8EAEE; font-weight:800; padding:18px 18px; cursor:pointer;
-  display:flex; align-items:center; justify-content:space-between}
-.faq-q .txt{pointer-events:none}
-.chev{width:22px; height:22px; border-radius:6px; border:1px solid var(--ring); display:grid; place-items:center; transition:transform .28s cubic-bezier(.2,.8,.2,1)}
-.chev svg{width:12px; height:12px}
-.faq-a{max-height:0; overflow:hidden; color:#C7CEDA; padding:0 18px; transition:max-height .5s cubic-bezier(.2,.8,.2,1), padding .5s cubic-bezier(.2,.8,.2,1)}
-.faq-a.open{padding:12px 18px 18px}
-.contact-mini{display:flex; align-items:center; justify-content:center; gap:10px; color:#C7CEDA; padding:8px 0 18px}
-
-/* ---------- PRICING ---------- */
-.pricing .wrap{border:1px solid var(--ring); border-radius:20px; padding:24px; background:var(--panel)}
-.price-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch}
-.price-card{background:rgba(17,20,28,.9); border:1px solid var(--ring); border-radius:18px; padding:22px;
-  box-shadow:0 16px 44px rgba(0,0,0,.35); transition:transform .18s, box-shadow .18s}
-.price-card:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 22px 60px rgba(0,0,0,.45)}
-.price-title{font-weight:900; margin:0 0 6px 0}
-.price-row{display:flex; align-items:baseline; gap:8px}
-.price-num{font-size:clamp(28px,4vw,36px); font-weight:900}
-.price-unit{color:#9AA3B2; font-weight:700}
-.hr{height:1px; background:rgba(255,255,255,.08); margin:12px 0}
-.li{display:flex; gap:10px; align-items:flex-start; color:#C7CEDA; margin:8px 0}
-.bullet{width:8px; height:8px; border-radius:50%; background:linear-gradient(90deg,var(--g1),var(--g2)); margin-top:8px}
-.price-btn{margin-top:14px; display:inline-block; padding:12px 16px; border-radius:12px; font-weight:800; text-decoration:none; border:1px solid var(--ring)}
-.price-btn.primary{background:linear-gradient(90deg,var(--g1),var(--g2)); color:#0B0D12}
-.price-btn.ghost{background:rgba(255,255,255,.06); color:#E8EAEE}
-@media (max-width:1024px){ .price-grid{grid-template-columns:1fr} }
-
-/* ---------- FOOTER ---------- */
-.mm-foot{text-align:center; color:#9AA3B2; padding:16px 0 22px}
-
-/* Streamlit primary buttons tweak */
+.element-container > div:has(> iframe){display:flex; justify-content:center;}
 .stButton>button[kind="primary"]{
-  background:linear-gradient(90deg,var(--g1),var(--g2))!important; color:#0B0D12!important;
-  font-weight:800!important; border:none!important
+  background:linear-gradient(90deg,var(--g1),var(--g2))!important;color:#0B0D12!important;
+  font-weight:800!important;border:none!important
 }
 </style>
 """, unsafe_allow_html=True)
@@ -369,127 +285,219 @@ if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ---------- Kendo-style NAVBAR (HTML + JS) ----------
-NAVBAR = """
-<div class="mm-top">
-  <div class="k-nav-shell">
-    <div id="kNav" class="k-nav k-show">
-      <div class="k-left">
-        <div class="k-dot"></div>
-        <div>MindMate</div>
-      </div>
-      <div class="k-mid">
-        <a class="k-tab" data-id="landing" href="?landing">Welcome<span class="k-underline" style="display:none"></span></a>
-        <a class="k-tab" data-id="home" href="?home">Početna<span class="k-underline" style="display:none"></span></a>
-        <a class="k-tab" data-id="chat" href="?chat">Chat<span class="k-underline" style="display:none"></span></a>
-        <a class="k-tab" data-id="checkin" href="?checkin">Check-in<span class="k-underline" style="display:none"></span></a>
-        <a class="k-tab" data-id="analytics" href="?analytics">Analitika<span class="k-underline" style="display:none"></span></a>
-      </div>
-      <a class="k-cta" href="?home">Kreni besplatno</a>
-      <div class="k-shadow"></div>
-    </div>
+# ---------- NAV ----------
+st.markdown("""
+<style>
+.mm-navwrap{position:sticky;top:0;z-index:9;background:rgba(17,20,28,.65);backdrop-filter:blur(10px);
+             border-bottom:1px solid var(--ring)}
+.mm-nav{max-width:1180px;margin:0 auto;padding:10px 6px;display:flex;align-items:center;justify-content:space-between}
+.mm-brand{display:flex;align-items:center;gap:10px;font-weight:900;color:#E8EAEE}
+.mm-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));
+        box-shadow:0 0 12px rgba(124,92,255,.7)}
+.mm-links{display:flex;gap:8px;flex-wrap:wrap}
+.mm-links a{text-decoration:none;color:#E8EAEE;font-weight:700;padding:8px 11px;border:1px solid var(--ring);
+            border-radius:12px;background:rgba(255,255,255,.02);transition:transform .18s ease}
+.mm-links a:hover{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.03)}
+@media (max-width:720px){ .mm-links a{padding:6px 9px} }
+</style>
+<div class="mm-navwrap"><div class="mm-nav">
+  <div class="mm-brand"><div class="mm-dot"></div><div>MindMate</div></div>
+  <div class="mm-links">
+    <a href="?landing">Welcome</a><a href="?home">Početna</a><a href="?chat">Chat</a>
+    <a href="?checkin">Check-in</a><a href="?analytics">Analitika</a>
   </div>
-</div>
-<script>
-(function(){
-  // Active tab highlight by query param
-  const tabs = Array.from(document.querySelectorAll('.k-tab'));
-  function activeId(){
-    const q = new URLSearchParams(window.location.search);
-    const ids = ["landing","home","chat","checkin","analytics"];
-    for(const id of ids){ if(q.has(id)) return id; }
-    return "landing";
-  }
-  function setActive(){
-    const id = activeId();
-    tabs.forEach(t=>{
-      const on = t.getAttribute('data-id')===id;
-      t.setAttribute('data-active', on ? 'true' : 'false');
-      const u = t.querySelector('.k-underline');
-      if(u) u.style.display = on ? 'block' : 'none';
-    });
-  }
-  setActive();
+</div></div>
+""", unsafe_allow_html=True)
 
-  // Hide on scroll down / show on scroll up
-  const nav = document.getElementById('kNav');
-  let lastY = window.scrollY;
-  let ticking = false;
-  function onScroll(){
-    const y = window.scrollY;
-    if(!ticking){
-      window.requestAnimationFrame(()=>{
-        if(y>lastY && y>64){ nav.classList.add('k-hide'); nav.classList.remove('k-show'); }
-        else { nav.classList.remove('k-hide'); nav.classList.add('k-show'); }
-        lastY = y;
-        ticking = false;
-      });
-      ticking = true;
-    }
-  }
-  window.addEventListener('scroll', onScroll, {passive:true});
+qp=st.query_params
+if   "landing"  in qp: st.session_state.page="landing"
+elif "home"     in qp: st.session_state.page="home"
+elif "chat"     in qp: st.session_state.page="chat"
+elif "checkin"  in qp: st.session_state.page="checkin"
+elif "analytics"in qp: st.session_state.page="analytics"
 
-  // When Streamlit re-renders, keep underline consistent
-  window.addEventListener('popstate', setActive);
-})();
-</script>
-"""
-
-# ---------- Parse query for routing ----------
-qp = st.query_params
-if   "landing"   in qp: st.session_state.page = "landing"
-elif "home"      in qp: st.session_state.page = "home"
-elif "chat"      in qp: st.session_state.page = "chat"
-elif "checkin"   in qp: st.session_state.page = "checkin"
-elif "analytics" in qp: st.session_state.page = "analytics"
-
-# ---------- LANDING (premium) ----------
+# ---------- LANDING (sa PRICING ispod FAQ) ----------
 LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<style>
+:root{
+  --bg:#0B0D12; --ink:#E8EAEE; --mut:#9AA3B2; --ring:rgba(255,255,255,.10);
+  --g1:#7C5CFF; --g2:#4EA3FF; --MAX:1180px;
+  --s-xl:64px; --s-lg:48px; --s-md:32px; --s-sm:20px;
+}
+*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
+.container{width:min(var(--MAX),92vw);margin:0 auto}
+.section{padding-block:var(--s-lg)} .section.tight{padding-block:var(--s-md)}
+.h2{font-size:clamp(22px,2.6vw,30px);margin:0 0 12px 0}
+.grid-12{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+.card{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px;transition:transform .2s ease, box-shadow .2s ease}
+.card:hover{transform:translateY(-2px) scale(1.03); box-shadow:0 14px 48px rgba(0,0,0,.35)}
+.btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .2s ease}
+.btn:hover{transform:translateY(-1px) scale(1.03)}
+.btn-primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
+.btn-ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
+
+/* Hero */
+.hero{padding-top:var(--s-lg);padding-bottom:var(--s-lg)}
+.hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center}
+.h-eyebrow{display:inline-block;padding:7px 11px;border-radius:999px;border:1px solid var(--ring);font-size:12px;color:#C7CEDA;background:rgba(255,255,255,.05);margin-bottom:8px}
+.h-title{font-size:clamp(28px,4.6vw,56px);line-height:1.06;margin:0 0 8px}
+.h-sub{color:var(--mut);margin:0 0 10px}
+.cta{display:flex;gap:10px;flex-wrap:wrap}
+
+.mira{display:flex;justify-content:center}
+#flower{width:min(380px,68vw);filter:drop-shadow(0 14px 42px rgba(124,92,255,.35))}
+#flower .p{transform-origin:50% 50%;animation:sway 6.6s ease-in-out infinite}
+#flower .c{animation:pulse 6s ease-in-out infinite}
+@keyframes sway{ 0%{transform:rotate(0)} 50%{transform:rotate(2.2deg)} 100%{transform:rotate(0)}}
+@keyframes pulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
+
+/* VSL + orb */
+.vsl-area{position:relative}
+.orb-wrap{position:relative;height:90px}
+.orb{
+  position:absolute; inset:-180px 0 0 0; margin:auto; z-index:0;
+  width:min(980px,90vw); height:min(980px,90vw);
+  background:
+    radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.55), transparent 62%),
+    radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.50), transparent 66%),
+    radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.22), transparent 70%);
+  filter: blur(28px) saturate(1.05); opacity:.9; animation:orbBreath 12s ease-in-out infinite;
+}
+@keyframes orbBreath{0%,100%{transform:scale(1)} 50%{transform:scale(1.04)}}
+.vsl{position:relative;z-index:1;max-width:980px;margin:0 auto;border-radius:16px;border:1px solid var(--ring);padding:10px;background:rgba(255,255,255,.05);box-shadow:0 28px 90px rgba(0,0,0,.65)}
+.vsl iframe{width:100%;aspect-ratio:16/9;height:auto;min-height:240px;border:0;border-radius:10px}
+
+/* Trusted by */
+.trusted{display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px}
+.logos{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.logo{width:110px;height:42px;border-radius:12px;border:1px solid var(--ring);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;color:#C7CEDA;font-weight:800;letter-spacing:.4px;transition:transform .2s}
+.logo:hover{transform:translateY(-2px)}
+
+/* 3-up features */
+.feat .card{grid-column:span 4}
+@media (max-width:900px){ .hero-grid{grid-template-columns:1fr} .feat .card{grid-column:span 12} }
+
+/* Compare */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:900px){ .compare{grid-template-columns:1fr} }
+
+/* Chart */
+.chart-wrap{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px}
+.legend{display:flex;gap:12px;align-items:center;color:#C7CEDA;margin-bottom:6px}.dot{width:12px;height:12px;border-radius:50%}
+.dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
+
+/* KPI */
+.kpis .card{grid-column:span 3;text-align:center}
+.knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.kcap{color:var(--mut)}
+
+/* Integrations */
+.int .card{grid-column:span 3;text-align:center;color:#C7CEDA}
+@media (max-width:900px){ .int .card{grid-column:span 6} }
+
+/* Testimonials */
+.twrap{border:1px solid var(--ring);border-radius:16px;padding:16px;background:#0F1219;position:relative;overflow:hidden}
+.trail{display:flex;gap:16px;transition:transform .45s ease}
+.tcard{min-width:calc(33.33% - 10.6px);background:rgba(255,255,255,.04);border:1px solid var(--ring);border-radius:12px;padding:14px}
+.tnav{position:absolute;top:50%;left:8px;right:8px;display:flex;justify-content:space-between;transform:translateY(-50%)}
+.tbtn{padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:transform .18s}
+.tbtn:hover{transform:scale(1.06)}
+
+/* ===== BIG FAQ ===== */
+.faq-zone{position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--ring);background:linear-gradient(180deg,#0F1219, #0E131A 55%, #0C1016)}
+.faq-clouds:before, .faq-clouds:after{
+  content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
+  background:
+    radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
+    radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
+    radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
+  filter:blur(12px); opacity:.7; animation:cloudFloat 26s linear infinite;
+}
+.faq-clouds:after{ inset:auto -25% -45% -25%; animation-duration:32s; opacity:.55 }
+@keyframes cloudFloat{0%{transform:translateX(-6%)} 50%{transform:translateX(6%)} 100%{transform:translateX(-6%)}}
+
+.faq-header{text-align:center; padding:28px 16px 10px}
+.badge{display:inline-flex;gap:6px;align-items:center;color:#C7CEDA;font-size:13px;padding:7px 12px;border:1px solid var(--ring);border-radius:999px;background:rgba(255,255,255,.05)}
+.faq-title{font-size:clamp(26px,4.2vw,44px);margin:8px 0 6px 0}
+.faq-sub{color:#A7B0BE;max-width:860px;margin:0 auto 18px}
+
+.faq{max-width:920px;margin:0 auto 26px;background:transparent;border:0}
+.faq-item{border:1px solid var(--ring);border-radius:14px;background:#0F1219;margin:12px 0;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.25); transition:transform .18s ease, box-shadow .18s ease}
+.faq-item:hover{transform:translateY(-1px); box-shadow:0 14px 36px rgba(0,0,0,.33)}
+.faq-q{width:100%;text-align:left;background:none;border:none;color:#E8EAEE;font-weight:800;padding:18px 18px;cursor:pointer; display:flex; align-items:center; justify-content:space-between}
+.faq-q .txt{pointer-events:none}
+.chev{width:22px;height:22px;border-radius:6px;border:1px solid var(--ring);display:grid;place-items:center;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.chev svg{width:12px;height:12px}
+.faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 18px;transition:max-height .42s cubic-bezier(.2,.8,.2,1), padding .42s cubic-bezier(.2,.8,.2,1)}
+.faq-a.open{padding:12px 18px 18px}
+.contact-mini{display:flex;align-items:center;justify-content:center;gap:10px;color:#C7CEDA;padding:8px 0 18px}
+
+/* ===== PRICING ===== */
+.pricing .wrap{border:1px solid var(--ring);border-radius:20px;padding:24px;background:#0F1219}
+.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
+.price-card{background:rgba(17,20,28,.9);border:1px solid var(--ring);border-radius:18px;padding:22px;box-shadow:0 16px 44px rgba(0,0,0,.35); transition:transform .18s, box-shadow .18s}
+.price-card:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 22px 60px rgba(0,0,0,.45)}
+.price-title{font-weight:900;margin:0 0 6px 0}
+.price-row{display:flex;align-items:baseline;gap:8px}
+.price-num{font-size:clamp(28px,4vw,36px);font-weight:900}
+.price-unit{color:#9AA3B2;font-weight:700}
+.hr{height:1px;background:rgba(255,255,255,.08);margin:12px 0}
+.li{display:flex;gap:10px;align-items:flex-start;color:#C7CEDA;margin:8px 0}
+.bullet{width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));margin-top:8px}
+.price-btn{margin-top:14px;display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring)}
+.price-btn.primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
+.price-btn.ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
+@media (max-width:900px){ .price-grid{grid-template-columns:1fr} }
+
+/* Reveal */
+.reveal{opacity:0;transform:translateY(20px);transition:opacity 1.2s ease, transform 1.2s ease}
+.reveal.v{opacity:1;transform:translateY(0)}
+
+.footer{color:#9AA3B2;text-align:center;padding:16px 0 22px}
+@media (max-width:900px){ .hero-grid{grid-template-columns:1fr} }
+</style>
 </head>
 <body>
+
 <!-- HERO -->
-<section class="mm-section">
-  <div class="mm-container">
-    <div class="hero reveal">
-      <div>
-        <div class="h-eyebrow">MindMate • Mentalni wellness</div>
-        <h1 class="h-title">Preusmeri 80% briga u konkretne korake — za 5 minuta dnevno.</h1>
-        <p class="h-sub">Kratki check-in, mikro-navike i empatičan razgovor. Jasni trendovi, tvoj ritam.</p>
-        <div style="display:flex; gap:10px; flex-wrap:wrap">
-          <a class="mm-btn primary" href="?home">Kreni odmah</a>
-          <a class="mm-btn ghost" href="#vsl">Pogledaj kako radi</a>
-        </div>
+<section class="section hero">
+  <div class="container hero-grid reveal">
+    <div>
+      <div class="h-eyebrow">MindMate • Mentalni wellness</div>
+      <h1 class="h-title">Preusmeri 80% briga u konkretne korake — za 5 minuta dnevno.</h1>
+      <p class="h-sub">Kratki check-in, mikro-navike i empatičan razgovor. Jasni trendovi, tvoj ritam.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="?home">Kreni odmah</a>
+        <a class="btn btn-ghost" href="?home">Pogledaj kako radi</a>
       </div>
-      <div class="mira">
-        <svg id="flower" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-label="Flower Mira">
-          <defs>
-            <linearGradient id="pG" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
-            <radialGradient id="cG" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#FFF7"/><stop offset="100%" stop-color="#7C5CFF"/></radialGradient>
-          </defs>
-          <g class="p"><path d="M100,20 C85,45 85,75 100,95 C115,75 115,45 100,20 Z" fill="url(#pG)"/>
-             <path d="M55,40 C40,70 52,95 95,105 C78,84 72,60 55,40 Z" fill="url(#pG)" opacity=".75"/>
-             <path d="M145,40 C160,70 148,95 105,105 C122,84 128,60 145,40 Z" fill="url(#pG)" opacity=".75"/></g>
-          <circle class="c" cx="100" cy="110" r="12" fill="url(#cG)"/>
-          <path d="M88 128 Q100 136 112 128" stroke="#E8EAEE" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/>
-          <circle cx="88" cy="122" r="2.8" fill="#E8EAEE" opacity=".9"/>
-          <circle cx="112" cy="122" r="2.8" fill="#E8EAEE" opacity=".9"/>
-        </svg>
-      </div>
+    </div>
+    <div class="mira">
+      <svg id="flower" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-label="Flower Mira">
+        <defs>
+          <linearGradient id="pG" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
+          <radialGradient id="cG" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#FFF7"/><stop offset="100%" stop-color="#7C5CFF"/></radialGradient>
+        </defs>
+        <g class="p"><path d="M100,20 C85,45 85,75 100,95 C115,75 115,45 100,20 Z" fill="url(#pG)"/>
+           <path d="M55,40 C40,70 52,95 95,105 C78,84 72,60 55,40 Z" fill="url(#pG)" opacity=".75"/>
+           <path d="M145,40 C160,70 148,95 105,105 C122,84 128,60 145,40 Z" fill="url(#pG)" opacity=".75"/></g>
+        <circle class="c" cx="100" cy="110" r="12" fill="url(#cG)"/>
+        <path d="M88 128 Q100 136 112 128" stroke="#E8EAEE" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/>
+        <circle cx="88" cy="122" r="2.8" fill="#E8EAEE" opacity=".9"/>
+        <circle cx="112" cy="122" r="2.8" fill="#E8EAEE" opacity=".9"/>
+      </svg>
     </div>
   </div>
 </section>
 
-<!-- VSL + planeta (orb) + Trusted by -->
-<section id="vsl" class="mm-section alt">
-  <div class="mm-container reveal">
-    <div class="vsl-wrap">
-      <div class="orb"></div>
-      <div class="vsl"><iframe src="https://www.youtube.com/embed/1qK0c9J_h10?rel=0&modestbranding=1" title="MindMate VSL" allowfullscreen></iframe></div>
-    </div>
+<!-- VSL + planeta + Trusted by -->
+<section class="section tight vsl-area">
+  <div class="container reveal">
+    <div class="orb-wrap"><div class="orb"></div></div>
+    <div class="vsl"><iframe src="https://www.youtube.com/embed/1qK0c9J_h10?rel=0&modestbranding=1" title="MindMate VSL" allowfullscreen></iframe></div>
     <div class="trusted">
-      <div style="opacity:.9">Trusted by folks from:</div>
+      <div style="opacity:.9">Trusted by people from:</div>
       <div class="logos">
         <div class="logo">Health+</div><div class="logo">Calmify</div><div class="logo">WellLabs</div>
         <div class="logo">FocusHub</div><div class="logo">MindBank</div>
@@ -499,33 +507,33 @@ LANDING = """
 </section>
 
 <!-- Benefiti -->
-<section class="mm-section">
-  <div class="mm-container">
+<section class="section tight">
+  <div class="container">
     <h2 class="h2">Zašto početi danas</h2>
-    <div class="grid g12 f3 reveal">
-      <div class="mm-card span-4"><b>2 pitanja dnevno</b><br><span style="color:#9AA3B2">Brz check-in bez frke; gradi ritam.</span></div>
-      <div class="mm-card span-4"><b>Mikro-navike (5–10 min)</b><br><span style="color:#9AA3B2">Male akcije → vidljiv napredak.</span></div>
-      <div class="mm-card span-4"><b>Grafovi i obrasci</b><br><span style="color:#9AA3B2">Jasno vidiš raspoloženje i fokus.</span></div>
+    <div class="grid-12 feat reveal">
+      <div class="card" style="grid-column:span 4"><b>2 pitanja dnevno</b><br><span style="color:#9AA3B2">Brz check-in bez frke; gradi ritam.</span></div>
+      <div class="card" style="grid-column:span 4"><b>Mikro-navike (5–10 min)</b><br><span style="color:#9AA3B2">Male akcije → vidljiv napredak.</span></div>
+      <div class="card" style="grid-column:span 4"><b>Grafovi i obrasci</b><br><span style="color:#9AA3B2">Jasno vidiš raspoloženje i fokus.</span></div>
     </div>
   </div>
 </section>
 
 <!-- Poređenje -->
-<section class="mm-section alt2">
-  <div class="mm-container reveal">
+<section class="section tight">
+  <div class="container reveal">
     <h2 class="h2">Bez plana vs. sa MindMate</h2>
     <div class="compare">
-      <div class="mm-card"><b>Bez plana</b><ul style="color:#9AA3B2;margin:.5rem 0 0 1rem">
+      <div class="card"><b>Bez plana</b><ul style="color:#9AA3B2;margin:.5rem 0 0 1rem">
         <li>Nasumične navike, bez praćenja</li><li>Preplavljenost</li><li>Nema jasnih trendova</li></ul></div>
-      <div class="mm-card"><b>Sa MindMate</b><ul style="color:#9AA3B2;margin:.5rem 0 0 1rem">
+      <div class="card"><b>Sa MindMate</b><ul style="color:#9AA3B2;margin:.5rem 0 0 1rem">
         <li>2 pitanja + mikro-koraci</li><li>Empatičan razgovor u tvom tonu</li><li>Grafovi napretka</li></ul></div>
     </div>
   </div>
 </section>
 
 <!-- Mini demo graf -->
-<section class="mm-section">
-  <div class="mm-container reveal">
+<section class="section tight">
+  <div class="container reveal">
     <div class="chart-wrap">
       <div style="font-weight:900;margin-bottom:6px">Produktivnost & Raspoloženje (poslednje sesije)</div>
       <div class="legend"><div class="dot dot-prod"></div><div>Produktivnost</div><div class="dot dot-mood" style="margin-left:12px"></div><div>Raspoloženje</div></div>
@@ -544,33 +552,33 @@ LANDING = """
 </section>
 
 <!-- KPI -->
-<section class="mm-section alt">
-  <div class="mm-container">
-    <div class="grid g12 kpis reveal">
-      <div class="mm-card span-3"><div class="knum" data-k="__USERS__">0</div><div class="kcap">Aktivnih korisnika</div></div>
-      <div class="mm-card span-3"><div class="knum" data-k="__SESS__">0</div><div class="kcap">Ukupno sesija</div></div>
-      <div class="mm-card span-3"><div class="knum" data-k="__SAT__">0</div><div class="kcap">Zadovoljstvo (%)</div></div>
-      <div class="mm-card span-3"><div class="knum" data-k="__RET__">0</div><div class="kcap">Mesečna zadržanost (%)</div></div>
+<section class="section tight">
+  <div class="container">
+    <div class="grid-12 kpis reveal">
+      <div class="card"><div class="knum" data-k="__USERS__">0</div><div class="kcap">Aktivnih korisnika</div></div>
+      <div class="card"><div class="knum" data-k="__SESS__">0</div><div class="kcap">Ukupno sesija</div></div>
+      <div class="card"><div class="knum" data-k="__SAT__">0</div><div class="kcap">Zadovoljstvo (%)</div></div>
+      <div class="card"><div class="knum" data-k="__RET__">0</div><div class="kcap">Mesečna zadržanost (%)</div></div>
     </div>
   </div>
 </section>
 
 <!-- Integracije -->
-<section class="mm-section">
-  <div class="mm-container">
+<section class="section tight">
+  <div class="container">
     <h2 class="h2">Privatnost & Integracije</h2>
-    <div class="grid g12 int reveal">
-      <div class="mm-card span-3">🔒 Lokalno čuvanje (MVP)</div>
-      <div class="mm-card span-3">🧠 AI na srpskom</div>
-      <div class="mm-card span-3">📊 Analitika napretka</div>
-      <div class="mm-card span-3">📱 Telefon & računar</div>
+    <div class="grid-12 int reveal">
+      <div class="card">🔒 Lokalno čuvanje (MVP)</div>
+      <div class="card">🧠 AI na srpskom</div>
+      <div class="card">📊 Analitika napretka</div>
+      <div class="card">📱 Telefon & računar</div>
     </div>
   </div>
 </section>
 
 <!-- Testimonials -->
-<section class="mm-section alt2">
-  <div class="mm-container reveal">
+<section class="section tight">
+  <div class="container reveal">
     <div class="twrap">
       <div class="trail" id="trail">
         <div class="tcard"><b>Mila</b><div style="color:#9AA3B2">28 • Beograd</div><div>“Check-in me drži u ritmu. 5 min i osećam pomak.”</div></div>
@@ -583,9 +591,9 @@ LANDING = """
   </div>
 </section>
 
-<!-- BIG FAQ -->
-<section class="mm-section">
-  <div class="mm-container faq-zone faq-clouds reveal">
+<!-- ===== BIG FAQ ===== -->
+<section class="section">
+  <div class="container faq-zone faq-clouds reveal">
     <div class="faq-header">
       <div class="badge">❓ Česta pitanja</div>
       <h3 class="faq-title">Pitanja? Odgovori!</h3>
@@ -630,31 +638,31 @@ LANDING = """
   </div>
 </section>
 
-<!-- PRICING -->
-<section class="mm-section alt">
-  <div class="mm-container reveal">
-    <div class="pricing">
-      <div class="wrap">
-        <h2 class="h2" style="margin-bottom:10px">Odaberi svoj ritam</h2>
-        <div class="price-grid">
-          <div class="price-card">
-            <div class="price-title">Free Trial</div>
-            <div class="price-row"><div class="price-num">0</div><div class="price-unit">RSD / 14 dana</div></div>
-            <div class="hr"></div>
-            <div class="li"><div class="bullet"></div><div>Kompletne funkcije 14 dana</div></div>
-            <div class="li"><div class="bullet"></div><div>Dnevni check-in i analitika</div></div>
-            <div class="li"><div class="bullet"></div><div>AI chat (srpski)</div></div>
-            <a class="price-btn primary" href="?home">Započni besplatno</a>
-          </div>
-          <div class="price-card">
-            <div class="price-title">Pro</div>
-            <div class="price-row"><div class="price-num">300</div><div class="price-unit">RSD / mes</div></div>
-            <div class="hr"></div>
-            <div class="li"><div class="bullet"></div><div>Neograničen chat & check-in</div></div>
-            <div class="li"><div class="bullet"></div><div>Napredna analitika & ciljevi</div></div>
-            <div class="li"><div class="bullet"></div><div>Prioritetna podrška</div></div>
-            <a class="price-btn ghost" href="?home">Kreni sa Pro planom</a>
-          </div>
+<!-- ===== PRICING (Free / Pro) ===== -->
+<section class="section pricing">
+  <div class="container reveal">
+    <div class="wrap">
+      <h2 class="h2" style="margin-bottom:10px">Odaberi svoj ritam</h2>
+      <div class="price-grid">
+        <!-- Free -->
+        <div class="price-card">
+          <div class="price-title">Free Trial</div>
+          <div class="price-row"><div class="price-num">0</div><div class="price-unit">RSD / 14 dana</div></div>
+          <div class="hr"></div>
+          <div class="li"><div class="bullet"></div><div>Kompletne funkcije 14 dana</div></div>
+          <div class="li"><div class="bullet"></div><div>Dnevni check-in i analitika</div></div>
+          <div class="li"><div class="bullet"></div><div>AI chat (srpski)</div></div>
+          <a class="price-btn primary" href="?home">Započni besplatno</a>
+        </div>
+        <!-- Pro -->
+        <div class="price-card">
+          <div class="price-title">Pro</div>
+          <div class="price-row"><div class="price-num">300</div><div class="price-unit">RSD / mes</div></div>
+          <div class="hr"></div>
+          <div class="li"><div class="bullet"></div><div>Neograničen chat & check-in</div></div>
+          <div class="li"><div class="bullet"></div><div>Napredna analitika & ciljevi</div></div>
+          <div class="li"><div class="bullet"></div><div>Prioritetna podrška</div></div>
+          <a class="price-btn ghost" href="?home">Kreni sa Pro planom</a>
         </div>
       </div>
     </div>
@@ -662,23 +670,23 @@ LANDING = """
 </section>
 
 <!-- CTA -->
-<section class="mm-section">
-  <div class="mm-container reveal" style="text-align:center">
-    <a class="mm-btn primary" href="?home">Kreni besplatno</a>
+<section class="section tight">
+  <div class="container reveal" style="text-align:center">
+    <a class="btn btn-primary" href="?home">Kreni besplatno</a>
   </div>
 </section>
 
-<div class="mm-foot">© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>
+<div class="footer">© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>
 
 <script>
-// Slow reveal
-const ob=new IntersectionObserver(es=>es.forEach(x=>x.isIntersecting&&x.target.classList.add('v')),{threshold:.22});
+// Reveal
+const ob=new IntersectionObserver(es=>es.forEach(x=>x.isIntersecting&&x.target.classList.add('v')),{threshold:.2});
 document.querySelectorAll('.reveal').forEach(el=>ob.observe(el));
 
-// KPI count-up (slightly longer)
-function cu(el){const t=parseInt(el.getAttribute('data-k'))||0,d=1600,s=performance.now();
-function tick(n){const p=Math.min((n-s)/d,1); el.textContent=Math.floor(t*(.12+.88*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)} requestAnimationFrame(tick)}
-const ko=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.knum').forEach(cu); ko.unobserve(x.target)}}),{threshold:.35});
+// KPI count-up
+function cu(el){const t=parseInt(el.getAttribute('data-k'))||0,d=1200,s=performance.now();
+function tick(n){const p=Math.min((n-s)/d,1);el.textContent=Math.floor(t*(.15+.85*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)} requestAnimationFrame(tick)}
+const ko=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.knum').forEach(cu);ko.unobserve(x.target)}}),{threshold:.3});
 document.querySelectorAll('.kpis').forEach(el=>ko.observe(el));
 
 // Chart
@@ -691,16 +699,16 @@ labels.forEach((lab,i)=>{const x=P+(W-2*P)*(i/(labels.length-1||1)), t=document.
   t.textContent=lab.slice(5).replace("-","/");xg.appendChild(t)});
 function path(vals){const pts=vals.map((v,i)=>[P+(W-2*P)*(i/(vals.length-1||1)), P+(H-2*P)*(1-(v-ymin)/(ymax-ymin))]); if(!pts.length)return ""; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=1;i<pts.length;i++){d+=` L ${pts[i][0]} ${pts[i][1]}`} return d}
 const prodPath=document.getElementById('prodPath'), moodPath=document.getElementById('moodPath'); prodPath.setAttribute("d",path(prod)); moodPath.setAttribute("d",path(mood));
-function sAnim(p,d=1500){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
-const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){sAnim(prodPath,1500);setTimeout(()=>sAnim(moodPath,1800),160);cio.unobserve(svg)}})},{threshold:.35});
+function sAnim(p,d=1300){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
+const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){sAnim(prodPath,1200);setTimeout(()=>sAnim(moodPath,1500),150);cio.unobserve(svg)}})},{threshold:.35});
 cio.observe(svg);
 
 // Testimonials slider
 (function(){const rail=document.getElementById('trail'); if(!rail) return; let i=0; const cards=rail.children.length;
-function go(d){i=(i+d+cards)%cards; const w=rail.children[0].offsetWidth+16; rail.style.transform=`translateX(${-i*w}px)`;}
+function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+16)}px)`;}
 document.getElementById('prev').onclick=()=>go(-1); document.getElementById('next').onclick=()=>go(1);})();
 
-// FAQ expand (no cut off)
+// FAQ logic
 document.querySelectorAll('.faq-item').forEach(item=>{
   const btn=item.querySelector('.faq-q');
   const chev=item.querySelector('.chev');
@@ -725,7 +733,7 @@ document.querySelectorAll('.faq-item').forEach(item=>{
 def render_landing():
     users, sessions, sat, retention = compute_metrics()
     labels, prod, mood = compute_trend_series()
-    html = (NAVBAR + LANDING
+    html = (LANDING
             .replace("__SESS__", str(max(sessions,0)))
             .replace("__USERS__", str(max(users,1)))
             .replace("__SAT__", str(max(min(sat,100),0)))
@@ -733,21 +741,20 @@ def render_landing():
             .replace("__X_LABELS__", json.dumps(labels))
             .replace("__P_SERIES__", json.dumps(prod))
             .replace("__M_SERIES__", json.dumps(mood)))
-    st_html(html, height=5600, scrolling=True)
+    st_html(html, height=5200, width=1280, scrolling=True)
 
-# ---------- HOME / CHAT / CHECKIN / ANALYTICS (part 1/2) ----------
+# ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
-    st.markdown(NAVBAR, unsafe_allow_html=True)
-    st.markdown("<section class='mm-wrap mm-section'><div class='mm-container'><h2 class='h2'>Tvoja kontrolna tabla</h2></div></section>", unsafe_allow_html=True)
+    st.markdown("### Tvoja kontrolna tabla")
     c1,c2,c3=st.columns(3)
     with c1:
-        st.markdown("**Chat** — AI na srpskom, praktičan i podržavajući.")
+        st.write("**Chat** — AI na srpskom, praktičan i podržavajući.")
         if st.button("Otvori chat →", use_container_width=True): goto("chat")
     with c2:
-        st.markdown("**Check-in** — 2 pitanja + mikro-ciljevi i streak.")
+        st.write("**Check-in** — 2 pitanja + mikro-ciljevi i streak.")
         if st.button("Idi na check-in →", use_container_width=True): goto("checkin")
     with c3:
-        st.markdown("**Analitika** — trendovi i talasne linije napretka.")
+        st.write("**Analitika** — trendovi i talasne linije napretka.")
         if st.button("Vidi trendove →", use_container_width=True): goto("analytics")
 
 def chat_reply(sys, log):
@@ -755,7 +762,6 @@ def chat_reply(sys, log):
     return chat_openai(msgs) if CHAT_PROVIDER=="openai" else chat_ollama(msgs)
 
 def render_chat():
-    st.markdown(NAVBAR, unsafe_allow_html=True)
     st.subheader("💬 Chat")
     st.caption(f"Backend: {CHAT_PROVIDER.upper()} | Model: {OLLAMA_MODEL if CHAT_PROVIDER=='ollama' else OPENAI_MODEL}")
     uid=get_or_create_uid()
@@ -769,7 +775,6 @@ def render_chat():
             st.markdown(reply); st.session_state.chat_log.append(("assistant",reply)); save_chat_event(uid,"assistant",reply)
 
 def render_checkin():
-    st.markdown(NAVBAR, unsafe_allow_html=True)
     st.subheader("🗓️ Daily Check-in"); st.caption("PHQ-2/GAD-2 inspirisano, nije dijagnoza.")
     c1,c2=st.columns(2)
     with c1:
@@ -783,7 +788,6 @@ def render_checkin():
         save_checkin(get_or_create_uid(), phq1,phq2,gad1,gad2, notes); st.success("✅ Zabeleženo!")
 
 def render_analytics():
-    st.markdown(NAVBAR, unsafe_allow_html=True)
     st.subheader("📈 Analitika")
     rows=sorted(_get_db()["checkins"], key=lambda r:r.get("date",""))
     if not rows:
@@ -831,110 +835,4 @@ elif page=="chat": render_chat()
 elif page=="checkin": render_checkin()
 elif page=="analytics": render_analytics()
 
-st.markdown("<div class='mm-foot'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
-# =================== FAQ SECTION ===================
-st.markdown("---")
-st.markdown("## ❓ Često postavljena pitanja", unsafe_allow_html=True)
-
-faq_items = {
-    "Da li je MindMate zamena za terapiju?": 
-        "Ne, MindMate nije medicinski alat, već podrška za svakodnevno mentalno zdravlje. "
-        "Uvek se posavetujte sa stručnjakom za ozbiljne probleme.",
-    "Koliko vremena mi treba dnevno?": 
-        "Samo 5–10 minuta dnevno za check-in i pregled napretka.",
-    "Kako čuvate privatnost?": 
-        "Svi podaci se čuvaju lokalno na vašem uređaju i ne dele se sa trećim licima.",
-    "Da li mogu koristiti MindMate besplatno?": 
-        "Da, postoji besplatna verzija sa osnovnim funkcijama.",
-    "Šta dobijam u premium planu?": 
-        "Napredna analitika, AI coach 24/7 i personalizovani mikro-koraci."
-}
-
-for question, answer in faq_items.items():
-    with st.expander(question, expanded=False):
-        st.write(answer)
-
-# =================== PRICING SECTION ===================
-st.markdown("---")
-st.markdown("## 💳 Izaberi plan", unsafe_allow_html=True)
-
-pc1, pc2 = st.columns(2)
-
-with pc1:
-    st.markdown("### 🆓 Free Plan")
-    st.write("✅ Dnevni check-in")
-    st.write("✅ Osnovna analitika")
-    st.write("✅ Pristup osnovnim savetima")
-    st.markdown("**Cena:** 0€/mesec")
-    if st.button("Izaberi Free", key="free_plan"):
-        st.success("Izabrali ste Free Plan!")
-
-with pc2:
-    st.markdown("### 💜 Premium Plan")
-    st.write("✅ Sve iz Free plana")
-    st.write("✅ Napredna analitika")
-    st.write("✅ AI coach 24/7")
-    st.write("✅ Personalizovani mikro-koraci")
-    st.markdown("**Cena:** 9.99€/mesec")
-    if st.button("Izaberi Premium", key="premium_plan"):
-        st.success("Izabrali ste Premium Plan!")
-
-# =================== ADDITIONAL TRUST SECTION ===================
-st.markdown("---")
-st.markdown("## 🌟 Naš uticaj", unsafe_allow_html=True)
-
-impact_cols = st.columns(4)
-impact_data = [
-    ("📈", "Povećano zadovoljstvo", "92% korisnika prijavilo bolju organizaciju života"),
-    ("🧠", "Smanjen stres", "80% korisnika se oseća smirenije posle 30 dana"),
-    ("⏳", "Ušteda vremena", "Prosečno 25 minuta dnevno ušteđeno"),
-    ("💬", "Pozitivni komentari", "5000+ pozitivnih recenzija")
-]
-
-for col, (icon, title, desc) in zip(impact_cols, impact_data):
-    with col:
-        st.markdown(f"### {icon} {title}")
-        st.write(desc)
-
-# =================== BACKGROUND COLOR SCROLL EFFECT ===================
-st.markdown(
-    """
-    <script>
-    document.addEventListener('scroll', function() {
-        const y = window.scrollY;
-        if (y > 500 && y < 1200) {
-            document.body.style.background = 'linear-gradient(180deg, #f0e6ff, #ffffff)';
-        } else if (y >= 1200) {
-            document.body.style.background = 'linear-gradient(180deg, #ffe6f0, #ffffff)';
-        } else {
-            document.body.style.background = 'white';
-        }
-    });
-    </script>
-    """,
-    unsafe_allow_html=True
-)
-
-# =================== FOOTER ===================
-st.markdown("---")
-footer_col1, footer_col2, footer_col3 = st.columns(3)
-
-with footer_col1:
-    st.markdown("### 📍 O nama")
-    st.write("MindMate je AI platforma posvećena svakodnevnoj brizi o mentalnom zdravlju.")
-
-with footer_col2:
-    st.markdown("### 🔗 Linkovi")
-    st.write("[Početna](#pocetna)")
-    st.write("[Chat](#chat)")
-    st.write("[Analitika](#analitika)")
-
-with footer_col3:
-    st.markdown("### 📬 Kontakt")
-    st.write("Email: support@mindmate.ai")
-    st.write("Telefon: +381 60 123 4567")
-
-st.markdown(
-    "<p style='text-align:center; color:gray; font-size:14px;'>© 2025 MindMate. Sva prava zadržana.</p>",
-    unsafe_allow_html=True
-)
+st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:16px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
