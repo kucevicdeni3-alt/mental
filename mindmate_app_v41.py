@@ -1,7 +1,6 @@
-# app.py — MindMate (clean Kendo-style navbar + landing + BIG FAQ + PRICING + Chat/Check-in/Analitika)
-# — single-file Streamlit app
+# app.py — MindMate + Login gate + Kendo-like navbar + Landing/Chat/Check-in/Analitika
 
-import os, json, requests, math
+import os, json, requests, math, re, hashlib, hmac
 import streamlit as st
 from datetime import datetime, date, timedelta
 from streamlit.components.v1 import html as st_html
@@ -9,6 +8,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+# ==============================
+# Konstante i ENV
+# ==============================
 APP_TITLE = "MindMate"
 DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")
 
@@ -18,46 +20,38 @@ OLLAMA_MODEL  = os.environ.get("OLLAMA_MODEL", "llama3.1")
 OPENAI_API_KEY= os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL  = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
+# USERS_JSON primer:
+# [{"email":"ja@primer.com","password":"mojalozinka","name":"Ja"},
+#  {"email":"ana@primer.com","password":"tajna","name":"Ana"}]
+USERS_JSON   = os.environ.get("USERS_JSON","")
+
+# ==============================
+# Pomoćno
+# ==============================
 def safe_rerun():
     if hasattr(st, "rerun"): st.rerun()
     else: st.experimental_rerun()
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 
-# ---------- Base theme ----------
-st.markdown("""
-<style>
-:root{
-  --bg:#0B0D12; --panel:#0F1219; --ink:#E8EAEE; --mut:#A3ADBF; --ring:rgba(255,255,255,.10);
-  --g1:#7C5CFF; --g2:#4EA3FF; --max:1180px;
-}
-html,body{background:var(--bg); color:var(--ink)}
-.main .block-container{padding-top:0!important; max-width:1280px!important;}
-/* Buttons */
-.stButton>button[kind="primary"]{
-  background:linear-gradient(90deg,var(--g1),var(--g2))!important;color:#0B0D12!important;
-  font-weight:800!important;border:none!important; border-radius:12px!important
-}
-/* Center iframes in components */
-.element-container > div:has(> iframe){display:flex; justify-content:center;}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------- Tiny JSON “DB” ----------
+# ==============================
+# “Baza”
+# ==============================
 def _init_db():
     if not os.path.exists(DB_PATH):
         with open(DB_PATH, "w", encoding="utf-8") as f:
-            json.dump({"checkins": [], "chat_events": []}, f)
+            json.dump({"checkins": [], "chat_events": [], "users": []}, f)
     try:
         with open(DB_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
-            data = {"checkins": [], "chat_events": []}
+            data = {"checkins": [], "chat_events": [], "users": []}
         data.setdefault("checkins", [])
         data.setdefault("chat_events", [])
+        data.setdefault("users", [])
         return data
     except Exception:
-        return {"checkins": [], "chat_events": []}
+        return {"checkins": [], "chat_events": [], "users": []}
 
 def _save_db(db):
     try:
@@ -72,11 +66,84 @@ if "DB_CACHE" not in st.session_state:
 def _get_db(): return st.session_state.DB_CACHE
 def _persist_db(): _save_db(st.session_state.DB_CACHE)
 
+# ==============================
+# Auth helpers (jednostavan login)
+# ==============================
+SECRET_PEPPER = "mindmate-pepper-01"  # lagani dodatak hash-u (nije kritičan u MVP-u)
+
+def _hash_pw(pw: str) -> str:
+    return hashlib.sha256((pw + SECRET_PEPPER).encode("utf-8")).hexdigest()
+
+def _load_users_from_env_or_db():
+    # 1) iz ENV
+    users=[]
+    if USERS_JSON.strip():
+        try:
+            raw=json.loads(USERS_JSON)
+            for u in raw:
+                email=(u.get("email","") or "").lower().strip()
+                name = u.get("name") or email.split("@")[0]
+                pw   = u.get("password") or ""
+                if email and pw:
+                    users.append({"email":email, "name":name, "pw_hash":_hash_pw(pw)})
+        except Exception:
+            pass
+    # 2) iz baze
+    db=_get_db()
+    for u in db.get("users",[]):
+        if u.get("email") and u.get("pw_hash"):
+            users.append(u)
+    # 3) default demo nalog ako nema ni jednog
+    if not users:
+        users=[{"email":"demo@mindmate.app","name":"Demo","pw_hash":_hash_pw("demo123")}]
+    # normalizuj unique po emailu (ENV ima prednost)
+    dedup={}
+    for u in users:
+        dedup[u["email"]]=u
+    return list(dedup.values())
+
+def _ensure_user_saved(u):
+    db=_get_db()
+    exists = any((x.get("email")==u["email"]) for x in db["users"])
+    if not exists:
+        db["users"].append({"email":u["email"], "name":u.get("name") or "", "pw_hash":u["pw_hash"]})
+        _persist_db()
+
+def verify_user(email, password):
+    email=(email or "").lower().strip()
+    users=_load_users_from_env_or_db()
+    for u in users:
+        if u["email"]==email and hmac.compare_digest(u["pw_hash"], _hash_pw(password or "")):
+            _ensure_user_saved(u)
+            return {"email": u["email"], "name": u.get("name") or email.split("@")[0]}
+    return None
+
+def start_session(user_dict):
+    st.session_state.auth = {
+        "email": user_dict["email"],
+        "name":  user_dict.get("name") or user_dict["email"].split("@")[0],
+        "uid":   f"u_{abs(hash(user_dict['email']))%10_000_000}"
+    }
+
+def logout():
+    for k in ["auth","chat_log","page"]:
+        if k in st.session_state: del st.session_state[k]
+    safe_rerun()
+
+def is_authed():
+    return bool(st.session_state.get("auth"))
+
 def get_or_create_uid():
+    if is_authed():
+        return st.session_state.auth["uid"]
+    # fallback za gosta
     if "uid" not in st.session_state:
         st.session_state.uid = f"user_{int(datetime.utcnow().timestamp())}"
     return st.session_state.uid
 
+# ==============================
+# Aplikaciona “baza” dogadjaja
+# ==============================
 def save_checkin(uid, phq1, phq2, gad1, gad2, notes=""):
     db = _get_db()
     db["checkins"].append({
@@ -138,7 +205,9 @@ def compute_trend_series():
             prod.append(int(65+18*math.sin(t*3.14*.9)+7*t))
     return labels, prod, mood
 
-# ---------- Chat backends ----------
+# ==============================
+# Chat backends
+# ==============================
 def chat_ollama(messages):
     try:
         r = requests.post(f"{OLLAMA_HOST}/api/chat",
@@ -178,71 +247,121 @@ SYSTEM_PROMPT = (
     "Daj mikro-korake (5–10min) i traži kratke update-e."
 )
 
-# ---------- Router ----------
+# ==============================
+# UI: Global stilovi
+# ==============================
+st.markdown("""
+<style>
+:root{
+  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2;
+  --g1:#7C5CFF; --g2:#4EA3FF; --ring:rgba(255,255,255,.10);
+}
+html,body{background:var(--bg); color:var(--ink)}
+.main .block-container{
+  padding-top:.6rem!important; padding-left:2rem!important; padding-right:2rem!important;
+  max-width:1280px!important; margin-inline:auto!important;
+}
+@media (max-width:900px){
+  .main .block-container{padding-left:1.2rem!important; padding-right:1.2rem!important}
+}
+.element-container > div:has(> iframe){display:flex; justify-content:center;}
+.stButton>button[kind="primary"]{
+  background:linear-gradient(90deg,var(--g1),var(--g2))!important;color:#0B0D12!important;
+  font-weight:800!important;border:none!important
+}
+
+/* Kendo-like navbar */
+.k-navwrap{position:sticky;top:0;z-index:50;background:rgba(12,14,19,.72);backdrop-filter:blur(10px);border-bottom:1px solid var(--ring)}
+.k-nav{max-width:1180px;margin:0 auto;padding:10px 8px;display:flex;align-items:center;justify-content:space-between}
+.k-brand{display:flex;align-items:center;gap:10px;font-weight:900}
+.k-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));box-shadow:0 0 12px rgba(124,92,255,.7)}
+.k-links{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.k-link{padding:8px 12px;border:1px solid var(--ring);border-radius:12px;text-decoration:none;color:#E8EAEE;font-weight:700;background:rgba(255,255,255,.02);transition:transform .18s ease, border-color .18s}
+.k-link:hover{transform:translateY(-1px) scale(1.03);border-color:rgba(255,255,255,.18)}
+.k-cta{padding:9px 13px;border-radius:12px;text-decoration:none;font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12;border:1px solid transparent}
+.k-who{display:flex;align-items:center;gap:8px;color:#C7CEDA}
+.k-avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2))}
+.k-logout{padding:6px 10px;border:1px solid var(--ring);border-radius:10px;background:rgba(255,255,255,.03);color:#E8EAEE;font-weight:700}
+@media (max-width:720px){ .k-link{padding:6px 9px} }
+</style>
+""", unsafe_allow_html=True)
+
+# ==============================
+# Login ekran
+# ==============================
+def render_login():
+    st.markdown("""
+    <div style="max-width:480px;margin:8vh auto 2rem;background:#10141B;border:1px solid var(--ring);border-radius:16px;padding:22px">
+      <div style="display:flex;align-items:center;gap:10px;font-weight:900;margin-bottom:6px">
+        <div class="k-avatar"></div><div>MindMate</div>
+      </div>
+      <div style="color:#C7CEDA;margin-bottom:12px">Prijavi se da nastaviš.</div>
+    </div>
+    """, unsafe_allow_html=True)
+    with st.form("login"):
+        email = st.text_input("Email", placeholder="npr. demo@mindmate.app")
+        pw    = st.text_input("Lozinka", type="password", placeholder="•••••••")
+        col1, col2 = st.columns([1,1])
+        with col1:
+            ok = st.form_submit_button("Prijavi se", type="primary", use_container_width=True)
+        with col2:
+            guest = st.form_submit_button("Uđi kao gost", use_container_width=True)
+    if ok:
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email or ""):
+            st.error("Unesi validan email."); return
+        u = verify_user(email, pw)
+        if u:
+            start_session(u); st.success(f"Ćao, {u['name']}!"); safe_rerun()
+        else:
+            st.error("Pogrešan email ili lozinka. (Probaj demo: demo@mindmate.app / demo123)")
+    elif guest:
+        # gost -> samo ime iz emaila placeholder
+        name="Gost"
+        start_session({"email": f"guest-{int(datetime.utcnow().timestamp())}@local", "name": name})
+        st.info("Ušao si kao gost."); safe_rerun()
+
+# ==============================
+# Router + Navbar
+# ==============================
 if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ---------- Kendo-style NAVBAR (single injection) ----------
-st.markdown("""
-<style>
-.k-wrap{position:sticky; top:0; z-index:99; backdrop-filter:blur(10px);
-  background:linear-gradient(180deg, rgba(17,20,28,.74), rgba(17,20,28,.55));
-  border-bottom:1px solid var(--ring)}
-.k-nav{max-width:var(--max); margin:0 auto; padding:12px 16px; display:flex; align-items:center; gap:12px}
-.k-brand{display:flex; align-items:center; gap:10px; font-weight:900}
-.k-dot{width:10px; height:10px; border-radius:50%; background:linear-gradient(90deg,var(--g1),var(--g2)); box-shadow:0 0 12px rgba(124,92,255,.7)}
-.k-links{display:flex; gap:8px; align-items:center; margin-left:auto}
-.k-link{padding:8px 12px; border-radius:12px; border:1px solid var(--ring); text-decoration:none; color:#E8EAEE; font-weight:700; background:rgba(255,255,255,.03); transition:transform .18s ease, border-color .18s ease}
-.k-link:hover{transform:translateY(-1px)}
-.k-link.active{background:rgba(255,255,255,.08)}
-.k-cta{padding:10px 14px; border-radius:12px; font-weight:800; text-decoration:none; border:1px solid var(--ring); background:linear-gradient(90deg,var(--g1),var(--g2)); color:#0B0D12}
-.k-burger{display:none; margin-left:8px; width:38px; height:38px; border-radius:12px; border:1px solid var(--ring); background:rgba(255,255,255,.06); color:#E8EAEE; font-weight:900}
-@media (max-width:860px){
-  .k-burger{display:block}
-  .k-links{position:fixed; top:66px; right:12px; left:12px; flex-direction:column; padding:10px; background:rgba(17,20,28,.9);
-    border:1px solid var(--ring); border-radius:14px; transform:scale(.98) translateY(-10px); opacity:0; pointer-events:none; transition:transform .18s ease, opacity .18s ease}
-  .k-links.open{transform:scale(1) translateY(0); opacity:1; pointer-events:auto}
-}
-</style>
-<div class="k-wrap">
-  <div class="k-nav">
-    <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
+def render_navbar():
+    who = st.session_state.auth["name"] if is_authed() else "Gost"
+    st.markdown(f"""
+<div class="k-navwrap"><div class="k-nav">
+  <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <div class="k-links" id="kLinks">
-      <a class="k-link" data-p="landing"   href="?landing">Welcome</a>
-      <a class="k-link" data-p="home"      href="?home">Početna</a>
-      <a class="k-link" data-p="chat"      href="?chat">Chat</a>
-      <a class="k-link" data-p="checkin"   href="?checkin">Check-in</a>
-      <a class="k-link" data-p="analytics" href="?analytics">Analitika</a>
-      <a class="k-cta"  href="?home">Kreni besplatno</a>
+      <a class="k-link {'active' if st.session_state.page=='landing' else ''}" href="?landing">Welcome</a>
+      <a class="k-link" href="?home">Početna</a>
+      <a class="k-link" href="?chat">Chat</a>
+      <a class="k-link" href="?checkin">Check-in</a>
+      <a class="k-link" href="?analytics">Analitika</a>
     </div>
-    <button class="k-burger" id="kBurger">≡</button>
+    <div class="k-who"><div class="k-avatar"></div><div>{who}</div></div>
   </div>
-</div>
-<script>
-(function(){
-  const burger=document.getElementById('kBurger');
-  const links=document.getElementById('kLinks');
-  if(burger&&links){
-    burger.addEventListener('click',()=>links.classList.toggle('open'));
-    document.addEventListener('click',(e)=>{ if(!links.contains(e.target)&&e.target!==burger) links.classList.remove('open')});
-  }
-  const qp=new URLSearchParams(window.location.search); const page=[...qp.keys()][0]||'landing';
-  document.querySelectorAll('.k-link').forEach(a=>{
-    if(a.dataset.p===page){ a.classList.add('active');}
-  });
-})();
-</script>
+</div></div>
 """, unsafe_allow_html=True)
+    # Logout dugme
+    with st.container():
+        cols = st.columns([0.82,0.18])
+        with cols[1]:
+            if st.button("Logout", key="lg", use_container_width=True):
+                logout()
 
-qp = st.query_params
+# Query param router
+qp=st.query_params
 if   "landing"  in qp: st.session_state.page="landing"
 elif "home"     in qp: st.session_state.page="home"
 elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# ---------- LANDING (hero + orb + svg flower + metrics + testimonials + BIG FAQ + PRICING) ----------
+# ==============================
+# LANDING (HTML) — ostalo identično
+# ==============================
 LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -258,98 +377,67 @@ LANDING = """
 .h2{font-size:clamp(22px,2.6vw,30px);margin:0 0 12px 0}
 .grid-12{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
 .card{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px;transition:transform .2s ease, box-shadow .2s ease}
-.card:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 14px 48px rgba(0,0,0,.35)}
-.btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .18s ease}
-.btn:hover{transform:translateY(-1px)}
+.card:hover{transform:translateY(-2px) scale(1.03); box-shadow:0 14px 48px rgba(0,0,0,.35)}
+.btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .2s ease}
+.btn:hover{transform:translateY(-1px) scale(1.03)}
 .btn-primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
 .btn-ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
-
-/* Hero */
 .hero{padding-top:var(--s-lg);padding-bottom:var(--s-lg)}
 .hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center}
 .h-eyebrow{display:inline-block;padding:7px 11px;border-radius:999px;border:1px solid var(--ring);font-size:12px;color:#C7CEDA;background:rgba(255,255,255,.05);margin-bottom:8px}
 .h-title{font-size:clamp(28px,4.6vw,56px);line-height:1.06;margin:0 0 8px}
 .h-sub{color:var(--mut);margin:0 0 10px}
 .cta{display:flex;gap:10px;flex-wrap:wrap}
-
-/* Flower */
 .mira{display:flex;justify-content:center}
 #flower{width:min(380px,68vw);filter:drop-shadow(0 14px 42px rgba(124,92,255,.35))}
 #flower .p{transform-origin:50% 50%;animation:sway 6.6s ease-in-out infinite}
 #flower .c{animation:pulse 6s ease-in-out infinite}
-@keyframes sway{ 0%{transform:rotate(0)} 50%{transform:rotate(2.2deg)} 100%{transform:rotate(0)}}
-@keyframes pulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
-
-/* VSL orb */
+@keyframes sway{0%{transform:rotate(0)}50%{transform:rotate(2.2deg)}100%{transform:rotate(0)}}
+@keyframes pulse{0%,100%{opacity:.85}50%{opacity:1}}
 .vsl-area{position:relative}
 .orb-wrap{position:relative;height:90px}
-.orb{
-  position:absolute; inset:-180px 0 0 0; margin:auto; z-index:0;
-  width:min(980px,90vw); height:min(980px,90vw);
-  background:
-    radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.55), transparent 62%),
-    radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.50), transparent 66%),
-    radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.22), transparent 70%);
-  filter: blur(28px) saturate(1.05); opacity:.9; animation:orbBreath 12s ease-in-out infinite;
-}
-@keyframes orbBreath{0%,100%{transform:scale(1)} 50%{transform:scale(1.04)}}
+.orb{position:absolute; inset:-180px 0 0 0; margin:auto; z-index:0;width:min(980px,90vw); height:min(980px,90vw);
+  background:radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.55), transparent 62%),
+             radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.50), transparent 66%),
+             radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.22), transparent 70%);
+  filter: blur(28px) saturate(1.05); opacity:.9; animation:orbBreath 12s ease-in-out infinite;}
+@keyframes orbBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
 .vsl{position:relative;z-index:1;max-width:980px;margin:0 auto;border-radius:16px;border:1px solid var(--ring);padding:10px;background:rgba(255,255,255,.05);box-shadow:0 28px 90px rgba(0,0,0,.65)}
 .vsl iframe{width:100%;aspect-ratio:16/9;height:auto;min-height:240px;border:0;border-radius:10px}
-
-/* Trusted by */
 .trusted{display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px}
 .logos{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
 .logo{width:110px;height:42px;border-radius:12px;border:1px solid var(--ring);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;color:#C7CEDA;font-weight:800;letter-spacing:.4px;transition:transform .2s}
 .logo:hover{transform:translateY(-2px)}
-
-/* 3-up features */
 .feat .card{grid-column:span 4}
 @media (max-width:900px){ .hero-grid{grid-template-columns:1fr} .feat .card{grid-column:span 12} }
-
-/* Compare */
 .compare{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 @media (max-width:900px){ .compare{grid-template-columns:1fr} }
-
-/* Chart */
 .chart-wrap{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px}
 .legend{display:flex;gap:12px;align-items:center;color:#C7CEDA;margin-bottom:6px}.dot{width:12px;height:12px;border-radius:50%}
 .dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
-
-/* KPI */
 .kpis .card{grid-column:span 3;text-align:center}
 .knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .kcap{color:var(--mut)}
-
-/* Integrations */
 .int .card{grid-column:span 3;text-align:center;color:#C7CEDA}
 @media (max-width:900px){ .int .card{grid-column:span 6} }
-
-/* Testimonials */
 .twrap{border:1px solid var(--ring);border-radius:16px;padding:16px;background:#0F1219;position:relative;overflow:hidden}
 .trail{display:flex;gap:16px;transition:transform .45s ease}
 .tcard{min-width:calc(33.33% - 10.6px);background:rgba(255,255,255,.04);border:1px solid var(--ring);border-radius:12px;padding:14px}
 .tnav{position:absolute;top:50%;left:8px;right:8px;display:flex;justify-content:space-between;transform:translateY(-50%)}
 .tbtn{padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:transform .18s}
 .tbtn:hover{transform:scale(1.06)}
-
-/* ===== BIG FAQ ===== */
 .faq-zone{position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--ring);background:linear-gradient(180deg,#0F1219, #0E131A 55%, #0C1016)}
-.faq-clouds:before, .faq-clouds:after{
-  content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
-  background:
-    radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
-    radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
-    radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
-  filter:blur(12px); opacity:.7; animation:cloudFloat 26s linear infinite;
-}
-.faq-clouds:after{ inset:auto -25% -45% -25%; animation-duration:32s; opacity:.55 }
-@keyframes cloudFloat{0%{transform:translateX(-6%)} 50%{transform:translateX(6%)} 100%{transform:translateX(-6%)}}
-
+.faq-clouds:before, .faq-clouds:after{{content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
+  background:radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
+             radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
+             radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
+  filter:blur(12px); opacity:.7; animation:cloudFloat 26s linear infinite;}}
+.faq-clouds:after{{ inset:auto -25% -45% -25%; animation-duration:32s; opacity:.55 }}
+@keyframes cloudFloat{{0%{{transform:translateX(-6%)}} 50%{{transform:translateX(6%)}} 100%{{transform:translateX(-6%)}}}}
 .faq-header{text-align:center; padding:28px 16px 10px}
 .badge{display:inline-flex;gap:6px;align-items:center;color:#C7CEDA;font-size:13px;padding:7px 12px;border:1px solid var(--ring);border-radius:999px;background:rgba(255,255,255,.05)}
 .faq-title{font-size:clamp(26px,4.2vw,44px);margin:8px 0 6px 0}
 .faq-sub{color:#A7B0BE;max-width:860px;margin:0 auto 18px}
-
 .faq{max-width:920px;margin:0 auto 26px;background:transparent;border:0}
 .faq-item{border:1px solid var(--ring);border-radius:14px;background:#0F1219;margin:12px 0;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.25); transition:transform .18s ease, box-shadow .18s ease}
 .faq-item:hover{transform:translateY(-1px); box-shadow:0 14px 36px rgba(0,0,0,.33)}
@@ -360,8 +448,6 @@ LANDING = """
 .faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 18px;transition:max-height .42s cubic-bezier(.2,.8,.2,1), padding .42s cubic-bezier(.2,.8,.2,1)}
 .faq-a.open{padding:12px 18px 18px}
 .contact-mini{display:flex;align-items:center;justify-content:center;gap:10px;color:#C7CEDA;padding:8px 0 18px}
-
-/* ===== PRICING ===== */
 .pricing .wrap{border:1px solid var(--ring);border-radius:20px;padding:24px;background:#0F1219}
 .price-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
 .price-card{background:rgba(17,20,28,.9);border:1px solid var(--ring);border-radius:18px;padding:22px;box-shadow:0 16px 44px rgba(0,0,0,.35); transition:transform .18s, box-shadow .18s}
@@ -377,18 +463,13 @@ LANDING = """
 .price-btn.primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
 .price-btn.ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
 @media (max-width:900px){ .price-grid{grid-template-columns:1fr} }
-
-/* Reveal */
 .reveal{opacity:0;transform:translateY(20px);transition:opacity 1.2s ease, transform 1.2s ease}
 .reveal.v{opacity:1;transform:translateY(0)}
-
 .footer{color:#9AA3B2;text-align:center;padding:16px 0 22px}
-@media (max-width:900px){ .hero-grid{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
 
-<!-- HERO -->
 <section class="section hero">
   <div class="container hero-grid reveal">
     <div>
@@ -418,7 +499,6 @@ LANDING = """
   </div>
 </section>
 
-<!-- VSL + orb + logos -->
 <section class="section tight vsl-area">
   <div class="container reveal">
     <div class="orb-wrap"><div class="orb"></div></div>
@@ -433,7 +513,6 @@ LANDING = """
   </div>
 </section>
 
-<!-- Benefits -->
 <section class="section tight">
   <div class="container">
     <h2 class="h2">Zašto početi danas</h2>
@@ -445,7 +524,6 @@ LANDING = """
   </div>
 </section>
 
-<!-- Compare -->
 <section class="section tight">
   <div class="container reveal">
     <h2 class="h2">Bez plana vs. sa MindMate</h2>
@@ -458,7 +536,6 @@ LANDING = """
   </div>
 </section>
 
-<!-- Demo chart (static SVG) -->
 <section class="section tight">
   <div class="container reveal">
     <div class="chart-wrap">
@@ -478,7 +555,6 @@ LANDING = """
   </div>
 </section>
 
-<!-- KPIs -->
 <section class="section tight">
   <div class="container">
     <div class="grid-12 kpis reveal">
@@ -490,7 +566,6 @@ LANDING = """
   </div>
 </section>
 
-<!-- Integrations -->
 <section class="section tight">
   <div class="container">
     <h2 class="h2">Privatnost & Integracije</h2>
@@ -503,7 +578,6 @@ LANDING = """
   </div>
 </section>
 
-<!-- Testimonials -->
 <section class="section tight">
   <div class="container reveal">
     <div class="twrap">
@@ -518,7 +592,6 @@ LANDING = """
   </div>
 </section>
 
-<!-- ===== BIG FAQ ===== -->
 <section class="section">
   <div class="container faq-zone faq-clouds reveal">
     <div class="faq-header">
@@ -565,13 +638,11 @@ LANDING = """
   </div>
 </section>
 
-<!-- ===== PRICING (Free / Pro) ===== -->
 <section class="section pricing">
   <div class="container reveal">
     <div class="wrap">
       <h2 class="h2" style="margin-bottom:10px">Odaberi svoj ritam</h2>
       <div class="price-grid">
-        <!-- Free -->
         <div class="price-card">
           <div class="price-title">Free Trial</div>
           <div class="price-row"><div class="price-num">0</div><div class="price-unit">RSD / 14 dana</div></div>
@@ -581,7 +652,6 @@ LANDING = """
           <div class="li"><div class="bullet"></div><div>AI chat (srpski)</div></div>
           <a class="price-btn primary" href="?home">Započni besplatno</a>
         </div>
-        <!-- Pro -->
         <div class="price-card">
           <div class="price-title">Pro</div>
           <div class="price-row"><div class="price-num">300</div><div class="price-unit">RSD / mes</div></div>
@@ -596,7 +666,6 @@ LANDING = """
   </div>
 </section>
 
-<!-- CTA -->
 <section class="section tight">
   <div class="container reveal" style="text-align:center">
     <a class="btn btn-primary" href="?home">Kreni besplatno</a>
@@ -616,7 +685,7 @@ function tick(n){const p=Math.min((n-s)/d,1);el.textContent=Math.floor(t*(.15+.8
 const ko=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.knum').forEach(cu);ko.unobserve(x.target)}}),{threshold:.3});
 document.querySelectorAll('.kpis').forEach(el=>ko.observe(el));
 
-// Chart (draw simple lines, animate)
+// Chart
 const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=320,P=44,ymin=0,ymax=100;
 const grid=document.getElementById('grid'), xg=document.getElementById('xlabels'), svg=document.getElementById('mmChart');
 for(let i=0;i<=4;i++){const y=P+(H-2*P)*(i/4), l=document.createElementNS("http://www.w3.org/2000/svg","line");
@@ -670,9 +739,10 @@ def render_landing():
             .replace("__M_SERIES__", json.dumps(mood)))
     st_html(html, height=5200, width=1280, scrolling=True)
 
-# ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
+# ==============================
+# HOME / CHAT / CHECKIN / ANALYTICS
+# ==============================
 def render_home():
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.markdown("### Tvoja kontrolna tabla")
     c1,c2,c3=st.columns(3)
     with c1:
@@ -690,7 +760,6 @@ def chat_reply(sys, log):
     return chat_openai(msgs) if CHAT_PROVIDER=="openai" else chat_ollama(msgs)
 
 def render_chat():
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.subheader("💬 Chat")
     st.caption(f"Backend: {CHAT_PROVIDER.upper()} | Model: {OLLAMA_MODEL if CHAT_PROVIDER=='ollama' else OPENAI_MODEL}")
     uid=get_or_create_uid()
@@ -704,7 +773,6 @@ def render_chat():
             st.markdown(reply); st.session_state.chat_log.append(("assistant",reply)); save_chat_event(uid,"assistant",reply)
 
 def render_checkin():
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.subheader("🗓️ Daily Check-in"); st.caption("PHQ-2/GAD-2 inspirisano, nije dijagnoza.")
     c1,c2=st.columns(2)
     with c1:
@@ -718,24 +786,20 @@ def render_checkin():
         save_checkin(get_or_create_uid(), phq1,phq2,gad1,gad2, notes); st.success("✅ Zabeleženo!")
 
 def render_analytics():
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.subheader("📈 Analitika")
     rows=sorted(_get_db()["checkins"], key=lambda r:r.get("date",""))
     if not rows:
         st.info("Još nema podataka. Uradi prvi check-in.")
         return
-
     df = pd.DataFrame(rows)
     df["total"] = df[["phq1","phq2","gad1","gad2"]].sum(axis=1)
     df["date"]  = pd.to_datetime(df["date"], errors="coerce")
     df.sort_values("date", inplace=True)
-
     fig1 = px.line(df, x="date", y="total", markers=True, title="Ukupan skor (PHQ2+GAD2) kroz vreme")
     fig1.update_layout(paper_bgcolor="#0B0D12", plot_bgcolor="#11141C", font_color="#E8EAEE",
                        xaxis_title="Datum", yaxis_title="Skor (0–12)",
                        margin=dict(l=10,r=10,t=50,b=10))
     st.plotly_chart(fig1, use_container_width=True)
-
     mood = (95 - df["total"]*4).clip(40, 100)
     prod = (92 - df["total"]*3 + (df.index%3==0)*2).clip(35, 100)
     fig2 = go.Figure()
@@ -746,7 +810,6 @@ def render_analytics():
                        xaxis_title="Datum", yaxis_title="Skor (0–100)",
                        margin=dict(l=10,r=10,t=50,b=10))
     st.plotly_chart(fig2, use_container_width=True)
-
     try:
         hh = pd.to_datetime(df["ts"], errors="coerce").dt.hour.dropna()
         if not hh.empty:
@@ -758,7 +821,17 @@ def render_analytics():
     except Exception:
         pass
 
-# ---------- Router ----------
+# ==============================
+# APP FLOW
+# ==============================
+# 1) Ako nije ulogovan → login gate
+if not is_authed():
+    render_login()
+    st.stop()
+
+# 2) Ulogovan → prikaži navbar i stranice
+render_navbar()
+
 page=st.session_state.page
 if page=="landing": render_landing()
 elif page=="home": render_home()
@@ -766,4 +839,4 @@ elif page=="chat": render_chat()
 elif page=="checkin": render_checkin()
 elif page=="analytics": render_analytics()
 
-st.markdown("<div style='text-align:center;color:#9AA3B2;margin:18px 0 22px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:16px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
