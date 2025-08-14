@@ -332,7 +332,7 @@ mm-toggle span:nth-child(3){{ top:25px; }}
     indicator.style.opacity = '1';
     indicator.style.width = r.width + 'px';
     indicator.style.transform = `translateX(${r.left - rw.left}px)`;
-  }}
+  }
   moveIndicator(active);
   <script>
 // JavaScript for navigation highlight fix
