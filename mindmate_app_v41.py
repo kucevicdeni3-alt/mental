@@ -1,5 +1,5 @@
-# app.py — MindMate: Apple-style navbar + Landing + Login/Register + Početna/Chat/Check-in/Analitika
-import os, json, requests, math, hashlib
+# app.py — MindMate: Landing (sa grafovima/FAQ/PRICING), Login/Register, Guarded pages
+import os, json, requests, math
 import streamlit as st
 from datetime import datetime, date, timedelta
 from streamlit.components.v1 import html as st_html
@@ -31,8 +31,7 @@ st.markdown("""
 }
 html,body{background:var(--bg); color:var(--ink)}
 .main .block-container{
-  padding-top:4.6rem!important; /* prostor da ne upadne ispod nav-a */
-  padding-left:2rem!important; padding-right:2rem!important;
+  padding-top:.6rem!important; padding-left:2rem!important; padding-right:2rem!important;
   max-width:1280px!important; margin-inline:auto!important;
 }
 @media (max-width:900px){
@@ -46,116 +45,22 @@ html,body{background:var(--bg); color:var(--ink)}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- NAVBAR (Apple-style, povećana opacity, CTA -> login) ----------
-NAV_HTML = """
-<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-<style>
-:root{
-  --bg:#0B0D12; --panel:rgba(16,20,27,.88); /* gušći panel */
-  --ink:#E8EAEE; --mut:#A2ACBA; --ring:rgba(255,255,255,.10);
-  --g1:#7C5CFF; --g2:#4EA3FF; --max:1180px;
-}
-*{box-sizing:border-box} body{margin:0;background:transparent;color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-.nav-wrap{position:fixed;top:0;left:0;right:0;z-index:1000;backdrop-filter:saturate(140%) blur(14px);-webkit-backdrop-filter:saturate(140%) blur(14px)}
-.nav{max-width:var(--max);margin:0 auto;padding:10px 14px;display:flex;align-items:center;gap:12px;position:relative}
-.nav::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,var(--ring),transparent)}
-.bar-bg{position:absolute;inset:0;background:linear-gradient(180deg,color-mix(in oklab,var(--panel) 96%, transparent), color-mix(in oklab,#0B0D12 98%, transparent));border-bottom:1px solid var(--ring);transition:box-shadow .24s ease,background .24s ease}
-.nav.sticky .bar-bg{box-shadow:0 10px 45px rgba(0,0,0,.35)}
-.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-weight:900;letter-spacing:.2px}
-.dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));box-shadow:0 0 18px color-mix(in oklab,var(--g1)60%,transparent)}
-.spacer{flex:1}
-.links{display:flex;align-items:center;gap:6px;position:relative}
-.link{--padx:.9rem;position:relative;display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 var(--padx);border-radius:12px;text-decoration:none;font-weight:800;color:var(--mut)}
-.link:hover{color:var(--ink)}
-.link:focus-visible{outline:2px solid color-mix(in oklab, var(--g2) 60%, white); outline-offset:2px; border-radius:14px}
-.indicator{position:absolute;bottom:6px;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--g1),var(--g2));width:0;transform:translateX(0);transition:transform .24s cubic-bezier(.2,.8,.2,1),width .24s cubic-bezier(.2,.8,.2,1)}
-.cta{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 16px;border-radius:999px;font-weight:900;text-decoration:none;color:#0B0D12;background:linear-gradient(90deg,var(--g1),var(--g2));border:1px solid var(--ring);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 10px 26px rgba(0,0,0,.35)}
-.cta:hover{filter:saturate(1.05)}
-/* Mobile */
-.burger{display:none;position:relative;width:38px;height:38px;border:0;background:transparent;border-radius:12px}
-.burger span{position:absolute;left:10px;right:10px;height:2px;background:var(--ink);border-radius:999px;transition:transform .24s,opacity .24s}
-.burger span:nth-child(1){top:11px}.burger span:nth-child(2){top:18px}.burger span:nth-child(3){top:25px}
-@media(max-width:920px){.links{display:none}.burger{display:block}}
-/* Mobile sheet */
-.sheet{position:fixed;inset:60px 10px auto;top:12px;background:rgba(16,20,27,.96);border:1px solid var(--ring);border-radius:16px;padding:10px;display:none;flex-direction:column;gap:6px}
-.sheet .link{height:46px;border-radius:10px;color:var(--ink);background:rgba(255,255,255,.04)}
-.sheet .cta{height:46px}
-</style>
-</head>
-<body>
-<div class="nav-wrap">
-  <div class="nav" id="nav">
-    <div class="bar-bg"></div>
-    <a class="brand" href="?landing" target="_parent" aria-label="MindMate">
-      <span class="dot" aria-hidden="true"></span><span>MindMate</span>
-    </a>
-    <button class="burger" id="burger" aria-label="Meni" aria-expanded="false" aria-controls="sheet">
-      <span></span><span></span><span></span>
-    </button>
-    <div class="spacer"></div>
-    <nav class="links" id="links" aria-label="Glavna navigacija">
-      <a class="link" data-page="landing"   href="?landing"   target="_parent">Welcome</a>
-      <a class="link" data-page="home"      href="?home"      target="_parent">Početna</a>
-      <a class="link" data-page="chat"      href="?chat"      target="_parent">Chat</a>
-      <a class="link" data-page="checkin"   href="?checkin"   target="_parent">Check-in</a>
-      <a class="link" data-page="analytics" href="?analytics" target="_parent">Analitika</a>
-      <span class="indicator" id="indicator" aria-hidden="true"></span>
-    </nav>
-    <a class="cta" href="?login" target="_parent">Prijava</a>
-  </div>
-</div>
-<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Brzi meni">
-  <a class="link" href="?landing"   target="_parent">Welcome</a>
-  <a class="link" href="?home"      target="_parent">Početna</a>
-  <a class="link" href="?chat"      target="_parent">Chat</a>
-  <a class="link" href="?checkin"   target="_parent">Check-in</a>
-  <a class="link" href="?analytics" target="_parent">Analitika</a>
-  <a class="cta"  href="?login"     target="_parent">Prijava</a>
-  <a class="link" href="?register"  target="_parent">Registracija</a>
-</div>
-<script>
-const links=[...document.querySelectorAll('.links .link')];
-const indicator=document.getElementById('indicator');
-function setActive(el){
-  if(!el) return; const r=el.getBoundingClientRect(); const wrap=el.parentElement.getBoundingClientRect();
-  indicator.style.width=r.width+'px'; indicator.style.transform=`translateX(${r.left-wrap.left}px)`;
-}
-const qs=new URLSearchParams(window.top?.location.search || window.location.search);
-const key=['landing','home','chat','checkin','analytics','login','register'].find(k=>qs.has(k))||'landing';
-setActive(links.find(a=>a.dataset.page===key)||links[0]);
-links.forEach(a=>a.addEventListener('mouseenter',()=>setActive(a)));
-document.querySelector('.links').addEventListener('mouseleave',()=>setActive(links.find(a=>a.dataset.page===key)||links[0]));
-const nav=document.getElementById('nav'); function onScroll(){ nav.classList.toggle('sticky', window.parent?.scrollY>6 || window.scrollY>6); }
-onScroll(); addEventListener('scroll', onScroll, {passive:true});
-const burger=document.getElementById('burger'); const sheet=document.getElementById('sheet');
-function setSheet(open){ sheet.style.display=open?'flex':'none'; burger.setAttribute('aria-expanded', String(open));
-  const [a,b,c]=burger.querySelectorAll('span'); if(open){ a.style.transform='translateY(7px) rotate(45deg)'; b.style.opacity='0'; c.style.transform='translateY(-7px) rotate(-45deg)'; }
-  else{ a.style.transform=''; b.style.opacity=''; c.style.transform=''; } }
-burger.addEventListener('click', ()=> setSheet(sheet.style.display!=='flex'));
-addEventListener('keydown', e=>{ if(e.key==='Escape') setSheet(false); });
-</script>
-</body></html>
-"""
-
-# Render nav (visina ~70px)
-st_html(NAV_HTML, height=70, scrolling=False)
-
 # ---------- “Baza” ----------
 def _init_db():
     if not os.path.exists(DB_PATH):
         with open(DB_PATH, "w", encoding="utf-8") as f:
-            json.dump({"checkins": [], "chat_events": [], "users": []}, f)
+            json.dump({"checkins": [], "chat_events": [], "users":[]}, f)
     try:
         with open(DB_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
-            data = {"checkins": [], "chat_events": [], "users": []}
+            data = {"checkins": [], "chat_events": [], "users":[]}
         data.setdefault("checkins", [])
         data.setdefault("chat_events", [])
         data.setdefault("users", [])
         return data
     except Exception:
-        return {"checkins": [], "chat_events": [], "users": []}
+        return {"checkins": [], "chat_events": [], "users":[]}
 
 def _save_db(db):
     try:
@@ -169,6 +74,29 @@ if "DB_CACHE" not in st.session_state:
 
 def _get_db(): return st.session_state.DB_CACHE
 def _persist_db(): _save_db(st.session_state.DB_CACHE)
+
+# ---------- Auth helpers (demo) ----------
+def register_user(email, password):
+    db = _get_db()
+    if any(u.get("email","").lower()==email.lower() for u in db["users"]):
+        return False, "Nalog već postoji."
+    db["users"].append({"email":email, "password":password, "created": datetime.utcnow().isoformat()})
+    _persist_db()
+    return True, "Registracija uspešna."
+
+def authenticate(email, password):
+    db = _get_db()
+    u = next((u for u in db["users"] if u.get("email","").lower()==email.lower()), None)
+    if not u: return False
+    return u.get("password")==password
+
+def require_auth_guard(target_page_key:str):
+    """Ako korisnik nije ulogovan, preusmeri na login i vrati False; inače True."""
+    if not st.session_state.get("auth_ok", False):
+        st.session_state.page = "login"
+        safe_rerun()
+        return False
+    return True
 
 def get_or_create_uid():
     if "uid" not in st.session_state:
@@ -197,25 +125,6 @@ def save_chat_event(uid, role, content):
     })
     _persist_db()
 
-# ---------- AUTH (MVP) ----------
-def _hash(pw:str)->str:
-    return hashlib.sha256((pw or "").encode("utf-8")).hexdigest()
-
-def create_user(email, password):
-    db=_get_db()
-    if any(u.get("email")==email for u in db["users"]):
-        return False, "Nalog već postoji."
-    db["users"].append({"email":email, "pw":_hash(password), "created": datetime.utcnow().isoformat()})
-    _persist_db()
-    return True, "Nalog kreiran."
-
-def check_login(email, password):
-    db=_get_db()
-    h=_hash(password)
-    u=next((u for u in db["users"] if u.get("email")==email and u.get("pw")==h), None)
-    return u is not None
-
-# ---------- Metričke serije ----------
 def compute_metrics():
     db = _get_db()
     uids = set([r.get("uid","") for r in db["checkins"]] + [r.get("uid","") for r in db["chat_events"]])
@@ -295,13 +204,171 @@ SYSTEM_PROMPT = (
     "Daj mikro-korake (5–10min) i traži kratke update-e."
 )
 
-# ---------- Router state ----------
+# ---------- Session defaults ----------
 if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
+if "auth_ok" not in st.session_state: st.session_state.auth_ok=False
+if "auth_email" not in st.session_state: st.session_state.auth_email=""
+
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ---------- Query params -> page ----------
-qp=st.query_params
+# ---------- NAV (Apple-style, sa višim opacity + CTA dinamički) ----------
+def render_navbar():
+    auth = st.session_state.get("auth_ok", False)
+    cta_label = "Izloguj se" if auth else "Prijava"
+    cta_href  = "?logout=1" if auth else "?login"
+    st.markdown(f"""
+<style>
+/* Wrapper */
+.mm-nav{{position:sticky;top:0;inset-inline:0;z-index:1000;}}
+/* Bar */
+.mm-bar{{
+  background: rgba(16,20,27,.88);
+  -webkit-backdrop-filter: saturate(160%) blur(10px);
+  backdrop-filter: saturate(160%) blur(10px);
+  border-bottom:1px solid var(--ring);
+  transition: background .22s cubic-bezier(.22,.95,.57,1.01), box-shadow .22s, border-color .22s;
+}}
+.mm-bar.scrolled{{ background: var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,.25); border-bottom-color: transparent; }}
+.mm-inner{{max-width:1180px;margin:0 auto;padding:10px 8px;display:flex;align-items:center;justify-content:space-between;gap:.75rem}}
+/* Brand */
+.mm-brand{{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;text-decoration:none}}
+.mm-dot{{width:10px;height:10px;border-radius:50%;
+  background:linear-gradient(90deg,var(--g1),var(--g2));
+  box-shadow:0 0 12px color-mix(in oklab, var(--g1) 60%, transparent);
+}}
+/* Links row */
+.mm-menu{{display:flex;align-items:center;gap:10px}}
+.mm-links{{position:relative;display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px}}
+.mm-link{{
+  --padx:.9rem;
+  display:inline-flex;align-items:center;justify-content:center;height:40px;
+  padding:0 var(--padx);border-radius:999px;text-decoration:none;
+  color:var(--mut);font-weight:800;transition:color .16s, transform .16s;
+}}
+.mm-link:hover{{ color:var(--ink); transform:translateY(-1px); }}
+.mm-indicator{{
+  position:absolute; left:0; bottom:3px; height:34px; border-radius:999px;
+  background:rgba(255,255,255,.06); border:1px solid var(--ring);
+  transition: width .22s cubic-bezier(.22,.95,.57,1.01), transform .22s cubic-bezier(.22,.95,.57,1.01), opacity .22s;
+  transform: translateX(0); opacity:0; z-index:-1;
+}}
+.mm-link.is-active ~ .mm-indicator{{ opacity:1; }}
+/* CTA */
+.mm-cta{{
+  display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 1rem;
+  border-radius:999px;text-decoration:none;font-weight:800;color:#0B0D12;
+  background:linear-gradient(90deg,var(--g1),var(--g2)); border:1px solid var(--ring);
+  box-shadow:0 8px 20px rgba(0,0,0,.25); transition:transform .16s, box-shadow .16s;
+}}
+.mm-cta:hover{{ transform:translateY(-1px) scale(1.03); }}
+/* Hamburger (mobile) */
+.mm-toggle{{
+  --bar:2px; display:none; position:relative; width:38px; height:38px; border:0; background:transparent; border-radius:12px; cursor:pointer;
+}}
+.mm-toggle span{{ position:absolute; left:8px; right:8px; height:var(--bar); background:var(--ink);
+  border-radius:999px; transition: transform .22s cubic-bezier(.22,.95,.57,1.01), opacity .22s; }}
+.mm-toggle span:nth-child(1){{ top:11px; }}
+.mm-toggle span:nth-child(2){{ top:18px; }}
+mm-toggle span:nth-child(3){{ top:25px; }}
+@media (max-width: 900px){{
+  .mm-toggle{{ display:block; }}
+  .mm-menu{{
+    position:fixed; left:0; right:0; top:62px;
+    background:var(--bg);
+    border-bottom:1px solid var(--ring);
+    transform:translateY(-8px); opacity:0; pointer-events:none;
+    flex-direction:column; align-items:stretch; gap:.5rem; padding:.75rem 1rem 1rem;
+    transition: opacity .22s, transform .22s;
+  }}
+  .mm-menu.open{{ transform:translateY(0); opacity:1; pointer-events:auto; }}
+  .mm-links{{ justify-content:center; }}
+  .mm-link{{ height:44px; }}
+  .mm-cta{{ height:44px; }}
+}}
+@media (prefers-reduced-motion: reduce){{
+  .mm-bar, .mm-bar *{{ transition:none !important; animation:none !important; }}
+}}
+</style>
+<div class="mm-nav">
+  <div class="mm-bar" id="mmBar">
+    <div class="mm-inner">
+      <a class="mm-brand" href="?landing"><div class="mm-dot"></div><div>MindMate</div></a>
+      <button class="mm-toggle" id="mmToggle" aria-label="Open menu" aria-expanded="false" aria-controls="mmMenu">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="mm-menu" id="mmMenu" aria-label="Glavna navigacija">
+        <div class="mm-links" id="mmLinks">
+          <a class="mm-link" href="?landing" data-page="landing">Welcome</a>
+          <a class="mm-link" href="?home" data-page="home">Početna</a>
+          <a class="mm-link" href="?chat" data-page="chat">Chat</a>
+          <a class="mm-link" href="?checkin" data-page="checkin">Check-in</a>
+          <a class="mm-link" href="?analytics" data-page="analytics">Analitika</a>
+          <span class="mm-indicator" id="mmIndicator" aria-hidden="true"></span>
+        </div>
+        <a class="mm-cta" href="{cta_href}">{cta_label}</a>
+      </nav>
+    </div>
+  </div>
+</div>
+<script>
+(function(){{
+  const bar = document.getElementById('mmBar');
+  const toggle = document.getElementById('mmToggle');
+  const menu = document.getElementById('mmMenu');
+  const linksWrap = document.getElementById('mmLinks');
+  const indicator = document.getElementById('mmIndicator');
+  const links = [...document.querySelectorAll('.mm-link')];
+  const onScroll = () => bar.classList.toggle('scrolled', window.scrollY > 8);
+  onScroll(); addEventListener('scroll', onScroll, {{passive:true}});
+  const qs = new URLSearchParams(location.search);
+  const key = ['landing','home','chat','checkin','analytics','login','register'].find(k => qs.has(k)) || 'landing';
+  const active = links.find(a => a.dataset.page === key) || links[0];
+  active.classList.add('is-active');
+  function moveIndicator(el){{
+    if(!el || !indicator) return;
+    const r = el.getBoundingClientRect();
+    const rw = linksWrap.getBoundingClientRect();
+    indicator.style.opacity = '1';
+    indicator.style.width = r.width + 'px';
+    indicator.style.transform = `translateX(${r.left - rw.left}px)`;
+  }}
+  moveIndicator(active);
+  links.forEach(a=>{{
+    a.addEventListener('mouseenter', ()=> moveIndicator(a));
+    a.addEventListener('focus', ()=> moveIndicator(a));
+    a.addEventListener('click', ()=>{
+      links.forEach(l=>l.classList.remove('is-active'));
+      a.classList.add('is-active'); moveIndicator(a);
+      if(menu.classList.contains('open')) setMenu(false);
+    });
+  }});
+  linksWrap.addEventListener('mouseleave', ()=> moveIndicator(document.querySelector('.mm-link.is-active')));
+  function setMenu(open){{
+    menu.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', open);
+    const [a,b,c] = toggle.querySelectorAll('span');
+    if(open){{ a.style.transform = 'translateY(7px) rotate(45deg)'; b.style.opacity = '0'; c.style.transform = 'translateY(-7px) rotate(-45deg)'; }}
+    else{{ a.style.transform = ''; b.style.opacity = ''; c.style.transform = ''; }}
+  }}
+  toggle?.addEventListener('click', ()=> setMenu(!menu.classList.contains('open')));
+  menu?.addEventListener('click', e => {{ if(e.target.closest('a')) setMenu(false); }});
+  addEventListener('keydown', e => {{ if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); }});
+  let rAF=null; addEventListener('resize', ()=>{{ cancelAnimationFrame(rAF); rAF=requestAnimationFrame(()=>moveIndicator(document.querySelector('.mm-link.is-active')||active)); }});
+}})();
+</script>
+""", unsafe_allow_html=True)
+
+# ---------- Query params & logout handling ----------
+qp = st.query_params
+if "logout" in qp:
+    st.session_state.auth_ok = False
+    st.session_state.auth_email = ""
+    st.session_state.page = "landing"
+    # ukloni query param nakon akcije
+    st.query_params.clear()
+    safe_rerun()
+
 if   "landing"  in qp: st.session_state.page="landing"
 elif "home"     in qp: st.session_state.page="home"
 elif "chat"     in qp: st.session_state.page="chat"
@@ -310,7 +377,7 @@ elif "analytics"in qp: st.session_state.page="analytics"
 elif "login"    in qp: st.session_state.page="login"
 elif "register" in qp: st.session_state.page="register"
 
-# ---------- LANDING (sa PRICING ispod FAQ) ----------
+# ---------- LANDING (originalni dizajn, samo CTA → BOLJI JA! vodi na login) ----------
 LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -463,7 +530,7 @@ LANDING = """
       <h1 class="h-title">Preusmeri 80% briga u konkretne korake — za 5 minuta dnevno.</h1>
       <p class="h-sub">Kratki check-in, mikro-navike i empatičan razgovor. Jasni trendovi, tvoj ritam.</p>
       <div class="cta">
-        <a class="btn btn-primary" href="?home">Kreni odmah</a>
+        <a class="btn btn-primary" href="?login">BOLJI JA!</a>
         <a class="btn btn-ghost" href="?home">Pogledaj kako radi</a>
       </div>
     </div>
@@ -646,7 +713,7 @@ LANDING = """
           <div class="li"><div class="bullet"></div><div>Kompletne funkcije 14 dana</div></div>
           <div class="li"><div class="bullet"></div><div>Dnevni check-in i analitika</div></div>
           <div class="li"><div class="bullet"></div><div>AI chat (srpski)</div></div>
-          <a class="price-btn primary" href="?home">Započni besplatno</a>
+          <a class="price-btn primary" href="?login">Započni besplatno</a>
         </div>
         <!-- Pro -->
         <div class="price-card">
@@ -656,7 +723,7 @@ LANDING = """
           <div class="li"><div class="bullet"></div><div>Neograničen chat & check-in</div></div>
           <div class="li"><div class="bullet"></div><div>Napredna analitika & ciljevi</div></div>
           <div class="li"><div class="bullet"></div><div>Prioritetna podrška</div></div>
-          <a class="price-btn ghost" href="?home">Kreni sa Pro planom</a>
+          <a class="price-btn ghost" href="?login">Kreni sa Pro planom</a>
         </div>
       </div>
     </div>
@@ -666,7 +733,7 @@ LANDING = """
 <!-- CTA -->
 <section class="section tight">
   <div class="container reveal" style="text-align:center">
-    <a class="btn btn-primary" href="?home">Kreni besplatno</a>
+    <a class="btn btn-primary" href="?login">BOLJI JA!</a>
   </div>
 </section>
 
@@ -736,8 +803,6 @@ def render_landing():
 # ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
     st.markdown("### Tvoja kontrolna tabla")
-    if st.session_state.get("auth_user"):
-        st.caption(f"Prijavljen: **{st.session_state.auth_user}**")
     c1,c2,c3=st.columns(3)
     with c1:
         st.write("**Chat** — AI na srpskom, praktičan i podržavajući.")
@@ -819,50 +884,71 @@ def render_analytics():
     except Exception:
         pass
 
-# ---------- Login / Register ----------
+# ---------- LOGIN / REGISTER ----------
 def render_login():
     st.subheader("🔐 Prijava")
-    email = st.text_input("Email")
-    pw    = st.text_input("Lozinka", type="password")
-    col1,col2 = st.columns([1,1])
-    with col1:
-        if st.button("Prijavi se", use_container_width=True):
-            if check_login(email, pw):
-                st.session_state.auth_user = email
-                st.success("Dobrodošao/la! ✅")
-                goto("home")
-            else:
-                st.error("Pogrešan email ili lozinka.")
-    with col2:
-        if st.button("Nemaš nalog? Registruj se →", use_container_width=True):
-            goto("register")
+    with st.form("login_form"):
+        email = st.text_input("Email", key="login_email")
+        pw    = st.text_input("Lozinka", type="password", key="login_pw")
+        ok = st.form_submit_button("Prijavi se")
+    st.caption("Nemaš nalog? 👉 [Registracija](?register)")
+    if ok:
+        if authenticate(email.strip(), pw):
+            st.session_state.auth_ok = True
+            st.session_state.auth_email = email.strip()
+            st.success("Dobrodošao/la! Preusmeravam na Početnu…")
+            st.session_state.page = "home"
+            st.query_params.clear()
+            st.query_params["home"] = ""
+            safe_rerun()
+        else:
+            st.error("Pogrešan email ili lozinka.")
 
 def render_register():
     st.subheader("🆕 Registracija")
-    email = st.text_input("Email")
-    pw1   = st.text_input("Lozinka", type="password")
-    pw2   = st.text_input("Ponovi lozinku", type="password")
-    if st.button("Kreiraj nalog", use_container_width=True):
-        if not email or not pw1:
+    with st.form("register_form"):
+        email = st.text_input("Email", key="reg_email")
+        pw    = st.text_input("Lozinka", type="password", key="reg_pw")
+        ok = st.form_submit_button("Kreiraj nalog")
+    st.caption("Već imaš nalog? 👉 [Prijava](?login)")
+    if ok:
+        if not email or not pw:
             st.error("Unesi email i lozinku.")
-        elif pw1 != pw2:
-            st.error("Lozinke se ne poklapaju.")
         else:
-            ok,msg = create_user(email, pw1)
-            if ok:
-                st.success("Nalog kreiran! Sada se prijavi.")
-                goto("login")
+            ok2, msg = register_user(email.strip(), pw)
+            if ok2:
+                st.success("Registracija uspešna. Uloguj se.")
+                st.session_state.page = "login"
+                st.query_params.clear()
+                st.query_params["login"] = ""
+                safe_rerun()
             else:
                 st.error(msg)
 
-# ---------- Router ----------
-page=st.session_state.page
-if page=="landing": render_landing()
-elif page=="home": render_home()
-elif page=="chat": render_chat()
-elif page=="checkin": render_checkin()
-elif page=="analytics": render_analytics()
-elif page=="login": render_login()
-elif page=="register": render_register()
+# ---------- Router + Guard ----------
+PROTECTED = {"home","chat","checkin","analytics"}
+
+page = st.session_state.page
+
+# Guard: ako nije ulogovan, zabrani pristup za PROTECTED
+if page in PROTECTED and not st.session_state.get("auth_ok", False):
+    st.session_state.page = "login"
+    page = "login"
+
+# Render sekcije
+if page=="landing":
+    render_landing()
+elif page=="login":
+    render_login()
+elif page=="register":
+    render_register()
+elif page=="home":
+    if require_auth_guard("home"): render_home()
+elif page=="chat":
+    if require_auth_guard("chat"): render_chat()
+elif page=="checkin":
+    if require_auth_guard("checkin"): render_checkin()
+elif page=="analytics":
+    if require_auth_guard("analytics"): render_analytics()
 
 st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:16px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
