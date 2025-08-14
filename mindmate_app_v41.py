@@ -338,11 +338,12 @@ mm-toggle span:nth-child(3){{ top:25px; }}
     a.addEventListener('mouseenter', ()=> moveIndicator(a));
     a.addEventListener('focus', ()=> moveIndicator(a));
     a.addEventListener('click', ()=>{
-      links.forEach(l=>l.classList.remove('is-active'));
-      a.classList.add('is-active'); moveIndicator(a);
-      if(menu.classList.contains('open')) setMenu(false);
-    });
-  }});
+      html_code = """
+<script>
+links.forEach(l=>l.classList.remove('is-active'));
+</script>
+"""
+
   linksWrap.addEventListener('mouseleave', ()=> moveIndicator(document.querySelector('.mm-link.is-active')));
   function setMenu(open){{
     menu.classList.toggle('open', open);
