@@ -1,16 +1,21 @@
-# app.py — MindMate (svetli Kendo-like navbar) + Login & Register u navbaru
-# Landing otvoren svima; ostale stranice traže login.
-# Pokretanje: streamlit run app.py
+# app.py — MindMate premium landing
+# - Hero hook + Flower Mira
+# - Vidljiva "planeta" (glow orb) iza VSL-a (smanjen)
+# - "Trusted by" ispod hero dela (puni prazan prostor)
+# - Sporije reveal animacije, hover scale-up fix
+# - Dinamična pozadina (3 band-a menjaju ton dok skroluješ)
+# - Features, Comparison, Integrations, Testimonials, FAQ
+# - Početna/Chat/Check-in/Analitika (Plotly)
 
-import os, json, requests, math, re, hashlib, hmac
+import os, json, requests, math
 import streamlit as st
 from datetime import datetime, date, timedelta
 from streamlit.components.v1 import html as st_html
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-# ===== Konstante / ENV =====
 APP_TITLE = "MindMate"
 DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")
 
@@ -20,29 +25,45 @@ OLLAMA_MODEL  = os.environ.get("OLLAMA_MODEL", "llama3.1")
 OPENAI_API_KEY= os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL  = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
-# Opcioni seed korisnici preko ENV (plain lozinke samo za MVP/dev)
-# npr: USERS_JSON='[{"email":"demo@mindmate.app","password":"demo123","name":"Demo"}]'
-USERS_JSON   = os.environ.get("USERS_JSON","")
-
 def safe_rerun():
     if hasattr(st, "rerun"): st.rerun()
     else: st.experimental_rerun()
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 
-# ===== “Baza” =====
+# ---------- Global okvir ----------
+st.markdown("""
+<style>
+.main .block-container{
+  padding-top:.6rem!important; padding-left:3rem!important; padding-right:3rem!important;
+  max-width:1440px!important; margin-inline:auto!important;
+}
+@media (max-width:1100px){ .main .block-container{padding-left:2rem!important;padding-right:2rem!important} }
+@media (max-width:768px){ .main .block-container{padding-left:1rem!important;padding-right:1rem!important} }
+
+.element-container > div:has(> iframe){display:flex; justify-content:center;}
+.stButton>button[kind="primary"]{
+  background:linear-gradient(90deg,#7C5CFF,#4EA3FF)!important;color:#0B0D12!important;
+  font-weight:800!important;border:none!important
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------- “Baza” ----------
 def _init_db():
     if not os.path.exists(DB_PATH):
         with open(DB_PATH, "w", encoding="utf-8") as f:
-            json.dump({"checkins": [], "chat_events": [], "users": []}, f)
+            json.dump({"checkins": [], "chat_events": []}, f)
     try:
         with open(DB_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-        if not isinstance(data, dict): data={}
-        data.setdefault("checkins", []); data.setdefault("chat_events", []); data.setdefault("users", [])
+        if not isinstance(data, dict):
+            data = {"checkins": [], "chat_events": []}
+        data.setdefault("checkins", [])
+        data.setdefault("chat_events", [])
         return data
     except Exception:
-        return {"checkins": [], "chat_events": [], "users": []}
+        return {"checkins": [], "chat_events": []}
 
 def _save_db(db):
     try:
@@ -57,106 +78,32 @@ if "DB_CACHE" not in st.session_state:
 def _get_db(): return st.session_state.DB_CACHE
 def _persist_db(): _save_db(st.session_state.DB_CACHE)
 
-# ===== Auth helpers (lagani hash + validacija) =====
-SECRET_PEPPER = "mindmate-pepper-01"
-
-def _hash_pw(pw: str) -> str:
-    return hashlib.sha256((pw + SECRET_PEPPER).encode("utf-8")).hexdigest()
-
-def _email_ok(e:str)->bool:
-    return bool(re.match(r"^[^@]+@[^@]+\.[^@]+$", e or ""))
-
-def _pw_ok(pw:str)->bool:
-    return bool(pw and len(pw) >= 6)
-
-def _load_users_from_env_or_db():
-    users=[]
-    # iz ENV
-    if USERS_JSON.strip():
-        try:
-            raw=json.loads(USERS_JSON)
-            for u in raw:
-                email=(u.get("email","") or "").lower().strip()
-                name = u.get("name") or email.split("@")[0]
-                pw   = u.get("password") or ""
-                if email and pw:
-                    users.append({"email":email, "name":name, "pw_hash":_hash_pw(pw)})
-        except Exception:
-            pass
-    # iz baze
-    db=_get_db()
-    for u in db.get("users",[]):
-        if u.get("email") and u.get("pw_hash"):
-            users.append(u)
-    # default demo ako baš nema ničeg
-    if not users:
-        users=[{"email":"demo@mindmate.app","name":"Demo","pw_hash":_hash_pw("demo123")}]
-    # deduplikacija
-    dedup={}
-    for u in users: dedup[u["email"]]=u
-    return list(dedup.values())
-
-def _ensure_user_saved(u):
-    db=_get_db()
-    if not any(x.get("email")==u["email"] for x in db["users"]):
-        db["users"].append({"email":u["email"], "name":u.get("name") or "", "pw_hash":u["pw_hash"]})
-        _persist_db()
-
-def verify_user(email, password):
-    email=(email or "").lower().strip()
-    users=_load_users_from_env_or_db()
-    for u in users:
-        if u["email"]==email and hmac.compare_digest(u["pw_hash"], _hash_pw(password or "")):
-            _ensure_user_saved(u)
-            return {"email": u["email"], "name": u.get("name") or email.split("@")[0]}
-    return None
-
-def register_user(email, password, name=""):
-    email=(email or "").lower().strip()
-    if not _email_ok(email): return (False, "Unesi ispravan email.")
-    if not _pw_ok(password): return (False, "Lozinka mora imati najmanje 6 karaktera.")
-    db=_get_db()
-    if any(u["email"]==email for u in db["users"]): return (False, "Nalog već postoji.")
-    u={"email":email, "name":(name or email.split("@")[0]).strip(), "pw_hash":_hash_pw(password)}
-    db["users"].append(u); _persist_db()
-    return (True, {"email":u["email"], "name":u["name"]})
-
-def start_session(user_dict):
-    st.session_state.auth = {
-        "email": user_dict["email"],
-        "name":  user_dict.get("name") or user_dict["email"].split("@")[0],
-        "uid":   f"u_{abs(hash(user_dict['email']))%10_000_000}"
-    }
-
-def logout():
-    for k in ["auth","chat_log"]:
-        if k in st.session_state: del st.session_state[k]
-    safe_rerun()
-
-def is_authed():
-    return bool(st.session_state.get("auth"))
-
 def get_or_create_uid():
-    if is_authed(): return st.session_state.auth["uid"]
     if "uid" not in st.session_state:
         st.session_state.uid = f"user_{int(datetime.utcnow().timestamp())}"
     return st.session_state.uid
 
-# ===== App podaci =====
 def save_checkin(uid, phq1, phq2, gad1, gad2, notes=""):
     db = _get_db()
     db["checkins"].append({
-        "uid": uid, "ts": datetime.utcnow().isoformat(), "date": date.today().isoformat(),
-        "phq1": int(phq1), "phq2": int(phq2), "gad1": int(gad1), "gad2": int(gad2),
+        "uid": uid,
+        "ts": datetime.utcnow().isoformat(),
+        "date": date.today().isoformat(),
+        "phq1": int(phq1), "phq2": int(phq2),
+        "gad1": int(gad1), "gad2": int(gad2),
         "notes": notes or ""
-    }); _persist_db()
+    })
+    _persist_db()
 
 def save_chat_event(uid, role, content):
     db = _get_db()
     db["chat_events"].append({
-        "uid": uid, "ts": datetime.utcnow().isoformat(), "role": role,
+        "uid": uid,
+        "ts": datetime.utcnow().isoformat(),
+        "role": role,
         "content": (content or "")[:4000]
-    }); _persist_db()
+    })
+    _persist_db()
 
 def compute_metrics():
     db = _get_db()
@@ -165,13 +112,20 @@ def compute_metrics():
     users = len(uids) or 1
     sessions = sum(1 for r in db["chat_events"] if r.get("role")=="user")
     cutoff = datetime.utcnow()-timedelta(days=30)
-    recent=[r for r in db["checkins"] if (datetime.fromisoformat((r.get("ts") or "").split("+")[0]) if r.get("ts") else datetime.utcnow())>=cutoff]
+    recent = []
+    for r in db["checkins"]:
+        try: dt = datetime.fromisoformat(r.get("ts",""))
+        except Exception: dt = datetime.utcnow()
+        if dt>=cutoff: recent.append(r)
     if recent:
         good=sum(1 for r in recent if (int(r.get("phq1",0))+int(r.get("phq2",0))+int(r.get("gad1",0))+int(r.get("gad2",0)))<=3)
         sat = int(round(100*good/len(recent)))
     else: sat=92
-    retention = min(99, 60 + len(recent)//5)
-    return users, sessions, sat, retention
+    avg_minutes = max(4, min(11, 4 + sessions//12))
+    streaks     = max(1, min(14, len(recent)//3))
+    retention   = min(99, 60 + (len(recent)//5))
+    nps         = min(90, 60 + (sat//2))
+    return users, sessions, sat, avg_minutes, streaks, retention, nps
 
 def compute_trend_series():
     db = _get_db()
@@ -193,13 +147,13 @@ def compute_trend_series():
             prod.append(int(65+18*math.sin(t*3.14*.9)+7*t))
     return labels, prod, mood
 
-# ===== Chat backends =====
+# ---------- Chat backends ----------
 def chat_ollama(messages):
     try:
         r = requests.post(f"{OLLAMA_HOST}/api/chat",
                           json={"model":OLLAMA_MODEL,"messages":messages,"stream":False}, timeout=120)
         if r.status_code==404:
-            prompt=""; 
+            prompt=""
             for m in messages:
                 role=m.get("role","user")
                 tag="SISTEM" if role=="system" else ("KORISNIK" if role=="user" else "ASISTENT")
@@ -207,11 +161,20 @@ def chat_ollama(messages):
             r = requests.post(f"{OLLAMA_HOST}/api/generate",
                               json={"model":OLLAMA_MODEL,"prompt":prompt,"stream":False}, timeout=120)
         r.raise_for_status()
-        try:
-            data=r.json()
-            return (data.get("message",{}) or {}).get("content") or data.get("response") or ""
-        except Exception:
-            return r.text
+        ct=(r.headers.get("Content-Type") or "").lower()
+        if "ndjson" in ct or "\n" in r.text.strip():
+            out=""
+            for line in r.text.strip().splitlines():
+                line=line.strip()
+                if not line: continue
+                try:
+                    data=json.loads(line)
+                    out += (data.get("message",{}) or {}).get("content") or data.get("response") or ""
+                except Exception:
+                    pass
+            if out: return out
+        data=r.json()
+        return (data.get("message",{}) or {}).get("content") or data.get("response") or ""
     except Exception as e:
         return f"[Greška Ollama: {e}]"
 
@@ -233,229 +196,497 @@ SYSTEM_PROMPT = (
     "Daj mikro-korake (5–10min) i traži kratke update-e."
 )
 
-# ===== Global stilovi (svetli navbar, tamni sadržaj kao do sada) =====
-st.markdown("""
-<style>
-:root{
-  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2; --ring:rgba(255,255,255,.10);
-  --g1:#7C5CFF; --g2:#4EA3FF;
-}
-/* app canvas */
-html,body{background:var(--bg); color:var(--ink)}
-.main .block-container{ padding-top:1rem!important; max-width:1280px!important; margin-inline:auto!important; }
-/* sticky light navbar */
-.k-wrap{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.86);backdrop-filter:saturate(1.1) blur(10px); border-bottom:1px solid rgba(0,0,0,.06); }
-.k-nav{max-width:1180px;margin:0 auto; padding:10px 8px; display:flex; align-items:center; justify-content:space-between;}
-.k-left{display:flex;align-items:center;gap:12px}
-.k-logo{width:22px;height:22px;border-radius:6px;background:linear-gradient(90deg,var(--g1),var(--g2)); box-shadow:0 0 0 3px rgba(124,92,255,.18)}
-.k-name{color:#111827; font-weight:900}
-.k-links{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.k-link{padding:8px 12px; border:1px solid rgba(0,0,0,.08); border-radius:12px; text-decoration:none; color:#111827; font-weight:700; background:#fff; transition:transform .18s ease, box-shadow .18s}
-.k-link:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(0,0,0,.06)}
-.k-cta{padding:9px 13px; border-radius:12px; text-decoration:none; font-weight:900; background:linear-gradient(90deg,var(--g1),var(--g2)); color:white; border:1px solid rgba(0,0,0,.00)}
-.k-ghost{padding:9px 13px; border-radius:12px; text-decoration:none; font-weight:900; background:#fff; color:#111827; border:1px solid rgba(0,0,0,.08)}
-.k-user{display:flex;align-items:center;gap:8px;color:#111827}
-.k-avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2))}
-.k-logout{padding:8px 12px;border:1px solid rgba(0,0,0,.08);border-radius:12px;background:#fff;color:#111827;font-weight:800}
-</style>
-""", unsafe_allow_html=True)
-
-# ===== Router + query param hooks =====
+# ---------- Router ----------
 if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-qp = st.query_params
+# ---------- NAVBAR ----------
+st.markdown("""
+<style>
+.mm-navwrap{position:sticky;top:0;z-index:9;background:rgba(17,20,28,.55);backdrop-filter:blur(12px);
+             border-bottom:1px solid rgba(255,255,255,.06)}
+.mm-nav{width:min(1320px,96vw);margin:0 auto;padding:10px 6px;display:flex;align-items:center;justify-content:space-between}
+.mm-brand{display:flex;align-items:center;gap:10px;font-weight:900;color:#E8EAEE}
+.mm-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,#7C5CFF,#4EA3FF);
+        box-shadow:0 0 12px rgba(124,92,255,.7)}
+.mm-links{display:flex;gap:10px;flex-wrap:wrap}
+.mm-links a{text-decoration:none;color:#E8EAEE;font-weight:700;padding:8px 12px;border:1px solid rgba(255,255,255,.08);
+            border-radius:12px;background:rgba(255,255,255,.02);transition:transform .18s ease}
+.mm-links a:hover{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.02)}
+@media (max-width: 640px){ .mm-links a{padding:6px 10px} }
+</style>
+<div class="mm-navwrap"><div class="mm-nav">
+  <div class="mm-brand"><div class="mm-dot"></div><div>MindMate</div></div>
+  <div class="mm-links">
+    <a href="?landing">Welcome</a><a href="?home">Početna</a><a href="?chat">Chat</a>
+    <a href="?checkin">Check-in</a><a href="?analytics">Analitika</a>
+  </div>
+</div></div>
+""", unsafe_allow_html=True)
 
-# logout preko query-a (?logout=1)
-if "logout" in qp:
-    logout()
-
-# auth panel preko query-a (?auth=login|register)
-show_auth = qp.get("auth",[None])[0] if isinstance(qp.get("auth"), list) else qp.get("auth")
-
-# ručni tabovi preko query-a
+qp=st.query_params
 if   "landing"  in qp: st.session_state.page="landing"
 elif "home"     in qp: st.session_state.page="home"
 elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# Ako user ide na privatne tabuove bez login-a → pokaži login panel
-if not is_authed() and st.session_state.page in {"home","chat","checkin","analytics"}:
-    st.session_state.page = "landing"
-    show_auth = show_auth or "login"
-    st.toast("Prijavi se da nastaviš. (demo@mindmate.app / demo123)")
-
-# ===== Navbar =====
-def render_navbar():
-    authed = is_authed()
-    who = (st.session_state.auth["name"] if authed else None) or "Gost"
-    # Linkovi (kao anchor-i sa query parametrima, da rade i bez dugmića)
-    links_html = f"""
-    <a class="k-link" href="?landing">Welcome</a>
-    <a class="k-link" href="?home">Početna</a>
-    <a class="k-link" href="?chat">Chat</a>
-    <a class="k-link" href="?checkin">Check-in</a>
-    <a class="k-link" href="?analytics">Analitika</a>
-    """
-    right_html = (
-        f'<div class="k-user"><div class="k-avatar"></div><div>{who}</div>'
-        f'<a class="k-logout" href="?landing&logout=1">Odjava</a></div>'
-        if authed
-        else '<a class="k-ghost" href="?landing&auth=login">Prijava</a>'
-             ' <a class="k-cta" href="?landing&auth=register">Registracija</a>'
-    )
-    st.markdown(
-        f"""
-        <div class="k-wrap"><div class="k-nav">
-            <div class="k-left">
-              <div class="k-logo"></div><div class="k-name">MindMate</div>
-            </div>
-            <div class="k-links">{links_html}</div>
-            <div>{right_html}</div>
-        </div></div>
-        """,
-        unsafe_allow_html=True
-    )
-
-# ===== Auth panel (renderuje se ispod navbara kada je pozvan) =====
-def render_auth_panel(mode="login"):
-    box_title = "Prijava" if mode=="login" else "Registracija"
-    st.markdown(
-        """
-        <div style="max-width:520px;margin:18px auto 0; background:#FFFFFF12; border:1px solid rgba(255,255,255,.10);
-                    border-radius:16px; padding:20px">
-          <div style="display:flex;align-items:center;gap:10px;font-weight:900;margin-bottom:6px">
-            <div class="k-avatar"></div><div>MindMate</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    with st.form(f"{mode}_form"):
-        if mode=="login":
-            email = st.text_input("Email", placeholder="npr. demo@mindmate.app")
-            pw    = st.text_input("Lozinka", type="password", placeholder="••••••")
-            col1, col2 = st.columns([1,1])
-            with col1:
-                ok = st.form_submit_button("Prijavi se", type="primary", use_container_width=True)
-            with col2:
-                guest = st.form_submit_button("Uđi kao gost", use_container_width=True)
-            if ok:
-                if not _email_ok(email): st.error("Unesi validan email.")
-                else:
-                    u = verify_user(email, pw)
-                    if u: start_session(u); st.success(f"Ćao, {u['name']}!"); st.query_params.clear(); safe_rerun()
-                    else: st.error("Pogrešan email ili lozinka. (Probaj demo: demo@mindmate.app / demo123)")
-            if guest:
-                start_session({"email": f"guest-{int(datetime.utcnow().timestamp())}@local", "name": "Gost"})
-                st.info("Ušao si kao gost."); st.query_params.clear(); safe_rerun()
-        else:
-            name  = st.text_input("Ime (prikazno)", placeholder="Kako da ti se obraćamo?")
-            email = st.text_input("Email")
-            pw    = st.text_input("Lozinka (min 6)", type="password")
-            ok    = st.form_submit_button("Kreiraj nalog", type="primary", use_container_width=True)
-            if ok:
-                if not _email_ok(email): st.error("Unesi validan email.")
-                elif not _pw_ok(pw):    st.error("Lozinka mora imati najmanje 6 karaktera.")
-                else:
-                    okr, data = register_user(email, pw, name or "")
-                    if okr:
-                        start_session(data); st.success(f"Dobrodošao, {data['name']}!")
-                        st.query_params.clear(); safe_rerun()
-                    else:
-                        st.error(data)
-
-# ===== LANDING (HTML) =====
-LANDING = """
+# ---------- LANDING (sa Trusted by, sporije animacije, dinamična pozadina) ----------
+LANDING_TEMPLATE = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <style>
 :root{
-  --bg:#0B0D12; --ink:#E8EAEE; --mut:#9AA3B2; --ring:rgba(255,255,255,.10);
-  --g1:#7C5CFF; --g2:#4EA3FF; --MAX:1180px;
-  --s-xl:64px; --s-lg:48px; --s-md:32px; --s-sm:20px;
+  --bg:#0B0D12; --panel:#11141C; --text:#E8EAEE; --mute:#9AA3B2;
+  --g1:#7C5CFF; --g2:#4EA3FF; --g3:#9AD6FF;
+  --fog1:rgba(124,92,255,.28); --fog2:rgba(78,163,255,.22);
+  --ring:rgba(255,255,255,.10);
 }
-*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
-.container{width:min(var(--MAX),92vw);margin:0 auto}
-.section{padding-block:var(--s-lg)} .section.tight{padding-block:var(--s-md)}
-.h2{font-size:clamp(22px,2.6vw,30px);margin:0 0 12px 0}
-.grid-12{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
-.card{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px;transition:transform .2s ease, box-shadow .2s ease}
-.card:hover{transform:translateY(-2px) scale(1.03); box-shadow:0 14px 48px rgba(0,0,0,.35)}
-.btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .2s ease}
-.btn:hover{transform:translateY(-1px) scale(1.03)}
-.btn-primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
-.btn-ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
-.hero{padding-top:var(--s-lg);padding-bottom:var(--s-lg)}
-.hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center}
-.h-eyebrow{display:inline-block;padding:7px 11px;border-radius:999px;border:1px solid var(--ring);font-size:12px;color:#C7CEDA;background:rgba(255,255,255,.05);margin-bottom:8px}
-.h-title{font-size:clamp(28px,4.6vw,56px);line-height:1.06;margin:0 0 8px}
-.h-sub{color:var(--mut);margin:0 0 10px}
-.cta{display:flex;gap:10px;flex-wrap:wrap}
-.mira{display:flex;justify-content:center}
-#flower{width:min(380px,68vw);filter:drop-shadow(0 14px 42px rgba(124,92,255,.35))}
-#flower .p{transform-origin:50% 50%;animation:sway 6.6s ease-in-out infinite}
-#flower .c{animation:pulse 6s ease-in-out infinite}
-@keyframes sway{0%{transform:rotate(0)}50%{transform:rotate(2.2deg)}100%{transform:rotate(0)}}
-@keyframes pulse{0%,100%{opacity:.85}50%{opacity:1}}
-/* vsl orb */
-.vsl-area{position:relative}
-.orb-wrap{position:relative;height:90px}
-.orb{position:absolute; inset:-180px 0 0 0; margin:auto; z-index:0;width:min(980px,90vw); height:min(980px,90vw);
-  background:radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.55), transparent 62%),
-             radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.50), transparent 66%),
-             radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.22), transparent 70%);
-  filter: blur(28px) saturate(1.05); opacity:.9; animation:orbBreath 12s ease-in-out infinite;}
-@keyframes orbBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
-.vsl{position:relative;z-index:1;max-width:980px;margin:0 auto;border-radius:16px;border:1px solid var(--ring);padding:10px;background:rgba(255,255,255,.05);box-shadow:0 28px 90px rgba(0,0,0,.65)}
-.vsl iframe{width:100%;aspect-ratio:16/9;height:auto;min-height:240px;border:0;border-radius:10px}
-.trusted{display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px}
-.logos{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
-.logo{width:110px;height:42px;border-radius:12px;border:1px solid var(--ring);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;color:#C7CEDA;font-weight:800;letter-spacing:.4px;transition:transform .2s}
-.logo:hover{transform:translateY(-2px)}
-/* ...ostatak (features, faq, pricing) identičan ... */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overflow-x:hidden}
+
+/* BG base */
+.bg-wrap{position:fixed;inset:0;z-index:0;background:
+  radial-gradient(1400px 800px at 18% -10%, rgba(124,92,255,.22), transparent 60%),
+  radial-gradient(1400px 800px at 82% 110%, rgba(78,163,255,.18), transparent 60%), var(--bg);}
+.bg-noise{position:fixed;inset:-20%;z-index:1;pointer-events:none;opacity:.08;background-image:url('data:image/svg+xml;utf8,\
+<svg xmlns=\\"http://www.w3.org/2000/svg\\" width=\\"1200\\" height=\\"1200\\"><filter id=\\"n\\"><feTurbulence type=\\"fractalNoise\\" baseFrequency=\\".9\\" numOctaves=\\"2\\" stitchTiles=\\"stitch\\"/></filter><rect width=\\"100%\\" height=\\"100%\\" filter=\\"url(%23n)\\" opacity=\\".55\\"/></svg>');}
+
+/* 3 band sloja (menja ton dok skroluješ) */
+.bg-band{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0;transition:opacity 1.6s ease}
+.bg-band.band1{background:radial-gradient(1200px 760px at 70% 30%, rgba(124,92,255,.22), transparent 60%)}
+.bg-band.band2{background:radial-gradient(1200px 760px at 30% 70%, rgba(78,163,255,.22), transparent 60%)}
+.bg-band.band3{background:radial-gradient(1200px 760px at 50% 50%, rgba(154,214,255,.20), transparent 60%)}
+.bg-band.show{opacity:1}
+
+.fog{position:fixed;inset:-10vh -10vw;z-index:3;pointer-events:none;filter:blur(48px) saturate(1.06);opacity:.35}
+.fog.f1{background:radial-gradient(800px 520px at 14% 16%, var(--fog1), transparent 60%)} .fog.f2{background:radial-gradient(900px 600px at 86% 18%, var(--fog2), transparent 60%)} .fog.f3{background:radial-gradient(1000px 700px at 50% 80%, var(--fog1), transparent 60%)}
+.petals{position:fixed;inset:0;z-index:4;pointer-events:none;overflow:hidden}
+
+.section{width:min(1320px,95vw);margin:0 auto;padding:52px 0;position:relative;z-index:5}
+.reveal{opacity:0;transform:translateY(22px);transition:opacity 1.6s ease, transform 1.6s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+
+/* HERO */
+.hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:32px;align-items:center;min-height:62vh}
+.hook{display:flex;flex-direction:column;gap:14px}
+.hook-eyebrow{display:inline-block;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--ring);font-size:12px;color:#C7CEDA}
+.hook-title{font-size:clamp(30px,4.8vw,64px);line-height:1.04;margin:0}
+.hook-sub{color:#9AA3B2;font-size:clamp(14px,2vw,18px);margin:0}
+.hook-cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.btn{position:relative;overflow:hidden;display:inline-block;padding:14px 18px;border-radius:14px;font-weight:800;text-decoration:none;border:1px solid var(--ring);cursor:pointer; transition:transform .25s ease}
+.btn:hover{transform:translateY(-1px) scale(1.04)}
+.btn-primary{color:#0B0D12;background:linear-gradient(90deg,#7C5CFF,#4EA3FF)} .btn-ghost{color:#E8EAEE;background:rgba(255,255,255,.06)}
+
+.mira-wrap{position:relative;display:flex;justify-content:center}
+#flowerMira{width:min(420px,70vw);display:block;filter:drop-shadow(0 18px 48px rgba(124,92,255,.35))}
+#flowerMira .petal{transform-origin:50% 50%;animation:petalSway 6.6s ease-in-out infinite}
+#flowerMira .centerPulse{animation:centerPulse 6s ease-in-out infinite}
+@keyframes petalSway{ 0%{transform:rotate(0)} 50%{transform:rotate(2deg)} 100%{transform:rotate(0)}}
+@keyframes centerPulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
+@media (max-width:980px){ .hero-grid{grid-template-columns:1fr} .mira-wrap{order:-1} }
+
+/* VSL + planeta */
+.vsl-area{position:relative;margin-top:8px}
+.orb-wrap{position:relative;height:160px}
+.orb{
+  position:absolute; inset:-240px 0 0 0; margin:auto;
+  width:min(1100px,92vw); height:min(1100px,92vw);
+  background:
+    radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.65), transparent 62%),
+    radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.58), transparent 66%),
+    radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.26), transparent 70%);
+  filter: blur(34px) saturate(1.06);
+  opacity:.9; transform:translateZ(0); z-index:0;
+}
+.orb:after{
+  content:""; position:absolute; inset:0; border-radius:50%;
+  background: conic-gradient(from 210deg at 50% 50%, rgba(124,92,255,0), rgba(124,92,255,.45) 18%, rgba(78,163,255,.45) 55%, rgba(124,92,255,0) 80%);
+  filter:blur(18px); opacity:.95; pointer-events:none;
+}
+.vsl-shell{
+  max-width:1100px;margin:0 auto 10px;padding:10px;background:rgba(255,255,255,.05);
+  border:1px solid var(--ring);border-radius:18px;box-shadow:0 32px 90px rgba(0,0,0,.65);
+  position:relative; z-index:1; transition:transform .25s ease, box-shadow .25s ease
+}
+.vsl-shell:hover{transform:translateY(-2px) scale(1.01); box-shadow:0 36px 110px rgba(0,0,0,.7)}
+.vsl-iframe{width:100%;aspect-ratio:16/7;height:auto;min-height:320px;border:0;border-radius:12px;background:#000}
+@media (max-width:920px){ .orb{inset:-180px 0 0 0} .vsl-iframe{min-height:220px;aspect-ratio:16/9} }
+
+/* TRUSTED BY (puni prazan prostor) */
+.trusted{display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center;margin-top:8px}
+.logo-row{display:flex;gap:22px;flex-wrap:wrap;justify-content:center}
+.logo{width:120px;height:48px;border-radius:12px;border:1px solid var(--ring);background:rgba(255,255,255,.04);
+      display:flex;align-items:center;justify-content:center;color:#C7CEDA;font-weight:800;letter-spacing:.5px;
+      transition:transform .25s ease, opacity .25s ease}
+.logo:hover{transform:translateY(-2px) scale(1.04); opacity:.95}
+
+/* KPI + cards hover */
+.kpis{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+.kpi{grid-column:span 3;background:rgba(17,20,28,.72);border:1px solid var(--ring);border-radius:18px;padding:18px;text-align:center; transition:transform .25s ease}
+.kpi:hover{transform:translateY(-2px) scale(1.03)}
+.kpi .num{font-size:clamp(22px,3.2vw,34px);font-weight:900;background:linear-gradient(90deg,#7C5CFF,#4EA3FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.kpi .label{color:#9AA3B2;margin-top:6px}
+
+/* grids */
+.timeline,.features{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+.ti,.f-card,.comp-card,.int-card,.t-card{background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px; transition:transform .25s ease}
+.ti:hover,.f-card:hover,.comp-card:hover,.int-card:hover,.t-card:hover{transform:translateY(-2px) scale(1.03)}
+.ti{grid-column:span 3}
+.f-card{grid-column:span 4}
+.f-title{font-weight:900;font-size:1.12rem;margin:6px 0}.f-text{color:#C7CEDA;margin:.2rem 0}
+
+/* compare */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:920px){ .compare{grid-template-columns:1fr} }
+
+/* chart wrap */
+.chart-wrap{background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px;box-shadow:0 14px 36px rgba(0,0,0,.28)}
+.legend{display:flex;gap:14px;align-items:center;color:#C7CEDA;margin-bottom:8px}.dot{width:12px;height:12px;border-radius:50%}
+.dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
+
+/* testimonials / faq */
+.t-wrap{position:relative;overflow:hidden;border:1px solid var(--ring);background:#0F1219;border-radius:18px;padding:18px}
+.t-rail{display:flex;gap:18px;transition:transform .5s ease}
+.t-card{min-width:calc(33.33% - 12px)}
+.t-nav{position:absolute;top:50%;left:8px;right:8px;display:flex;justify-content:space-between;transform:translateY(-50%)}
+.t-btn{padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer; transition:transform .2s ease}
+.t-btn:hover{transform:scale(1.08)}
+
+.integrations{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+.int-card{grid-column:span 3;text-align:center;color:#C7CEDA}
+@media (max-width:920px){ .int-card{grid-column:span 6} }
+
+.faq{border:1px solid var(--ring);border-radius:18px;background:#0F1219}
+.faq-item{border-top:1px solid rgba(255,255,255,.06)}
+.faq-item:first-child{border-top:none}
+.faq-q{width:100%;text-align:left;background:none;border:none;color:#E8EAEE;font-weight:800;padding:16px;cursor:pointer}
+.faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 16px;transition:max-height .5s ease,padding .5s ease}
+
+/* sticky cta */
+.sticky-cta{position:fixed;left:0;right:0;bottom:16px;z-index:50;display:flex;justify-content:center;pointer-events:none;transform:translateY(110%);opacity:0;transition:transform .6s,opacity .6s}
+.sticky-cta.show{transform:translateY(0);opacity:1}
+.sticky-cta .inner{pointer-events:auto;width:min(1100px,92vw);background:rgba(20,24,33,.7);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(14px) saturate(1.05);box-shadow:0 24px 60px rgba(0,0,0,.45);border-radius:18px;padding:16px 18px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
+.sticky-cta .actions{display:flex;gap:10px}.sticky-cta .btn{padding:10px 14px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring)}
+
+.cursor-flower{position:fixed;top:0;left:0;width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#7C5CFF,#4EA3FF);box-shadow:0 0 12px rgba(124,92,255,.7); pointer-events:none; transform:translate(-50%,-50%) scale(.95);opacity:.28; transition:opacity .15s ease, transform .1s ease}
+.cursor-boost{opacity:1!important; transform:translate(-50%,-50%) scale(1.08)!important;}
 </style>
 </head>
 <body>
-<section class="section hero">
-  <div class="container hero-grid">
-    <div>
-      <div class="h-eyebrow">MindMate • Mentalni wellness</div>
-      <h1 class="h-title">Preusmeri 80% briga u konkretne korake — za 5 minuta dnevno.</h1>
-      <p class="h-sub">Kratki check-in, mikro-navike i empatičan razgovor. Jasni trendovi, tvoj ritam.</p>
-      <div class="cta">
-        <a class="btn btn-primary" href="?home">Kreni odmah</a>
-        <a class="btn btn-ghost" href="?home">Pogledaj kako radi</a>
+<div class="cursor-flower" id="cursorFlower"></div>
+<div class="bg-wrap"></div><div class="bg-noise"></div>
+<div class="bg-band band1 show" id="band1"></div>
+<div class="bg-band band2" id="band2"></div>
+<div class="bg-band band3" id="band3"></div>
+<div class="fog f1" id="fog1"></div><div class="fog f2" id="fog2"></div><div class="fog f3" id="fog3"></div>
+<svg class="petals" id="petals" xmlns="http://www.w3.org/2000/svg"></svg>
+
+<!-- HERO -->
+<section class="section reveal band" data-band="1">
+  <div class="hero-grid">
+    <div class="hook">
+      <div class="hook-eyebrow">MindMate • Mentalni wellness</div>
+      <h1 class="hook-title">Preusmeri 80% briga u konkretne korake — <br/> za 5 minuta dnevno.</h1>
+      <p class="hook-sub">Kratki check-in, mikro-navike i empatičan razgovor. Jasni trendovi, tvoj ritam.</p>
+      <div class="hook-cta">
+        <a class="btn btn-primary fx-ripple" href="?home">Kreni odmah</a>
+        <a class="btn btn-ghost fx-ripple" href="?home">Pogledaj kako radi</a>
       </div>
     </div>
-    <div class="mira">
-      <svg id="flower" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-label="Flower Mira">
+    <div class="mira-wrap">
+      <svg id="flowerMira" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flower Mira">
         <defs>
-          <linearGradient id="pG" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
-          <radialGradient id="cG" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#FFF7"/><stop offset="100%" stop-color="#7C5CFF"/></radialGradient>
+          <linearGradient id="petalG" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/>
+          </linearGradient>
+          <radialGradient id="coreG" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#FFF7" /><stop offset="100%" stop-color="#7C5CFF" />
+          </radialGradient>
         </defs>
-        <g class="p"><path d="M100,20 C85,45 85,75 100,95 C115,75 115,45 100,20 Z" fill="url(#pG)"/>
-           <path d="M55,40 C40,70 52,95 95,105 C78,84 72,60 55,40 Z" fill="url(#pG)" opacity=".75"/>
-           <path d="M145,40 C160,70 148,95 105,105 C122,84 128,60 145,40 Z" fill="url(#pG)" opacity=".75"/></g>
-        <circle class="c" cx="100" cy="110" r="12" fill="url(#cG)"/>
-        <path d="M88 128 Q100 136 112 128" stroke="#E8EAEE" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/>
-        <circle cx="88" cy="122" r="2.8" fill="#E8EAEE" opacity=".9"/>
-        <circle cx="112" cy="122" r="2.8" fill="#E8EAEE" opacity=".9"/>
+        <g class="petal" opacity="0.95">
+          <path d="M100,20 C85,45 85,75 100,95 C115,75 115,45 100,20 Z" fill="url(#petalG)"/>
+          <path d="M55,40 C40,70 52,95 95,105 C78,84 72,60 55,40 Z" fill="url(#petalG)" opacity="0.75"/>
+          <path d="M145,40 C160,70 148,95 105,105 C122,84 128,60 145,40 Z" fill="url(#petalG)" opacity="0.75"/>
+        </g>
+        <circle class="centerPulse" cx="100" cy="110" r="12" fill="url(#coreG)"/>
+        <path d="M88 128 Q100 136 112 128" stroke="#E8EAEE" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>
+        <circle cx="88" cy="122" r="2.8" fill="#E8EAEE" opacity="0.9"/>
+        <circle cx="112" cy="122" r="2.8" fill="#E8EAEE" opacity="0.9"/>
       </svg>
     </div>
   </div>
+
+  <!-- TRUSTED BY -->
+  <div class="trusted">
+    <div style="opacity:.9">Trusted by people from:</div>
+    <div class="logo-row">
+      <div class="logo">Health+</div>
+      <div class="logo">Calmify</div>
+      <div class="logo">WellLabs</div>
+      <div class="logo">FocusHub</div>
+      <div class="logo">MindBank</div>
+    </div>
+  </div>
 </section>
+
+<!-- VSL + planeta -->
+<section class="section reveal vsl-area band" data-band="2">
+  <div class="orb-wrap"><div class="orb" id="orb"></div></div>
+  <div class="vsl-shell">
+    <iframe class="vsl-iframe" src="https://www.youtube.com/embed/1qK0c9J_h10?rel=0&modestbranding=1"
+            title="MindMate VSL" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+  </div>
+</section>
+
+<!-- KPI blok -->
+<section class="section reveal band" data-band="3">
+  <div class="kpis" id="kpiBlock">
+    <div class="kpi"><div class="num" data-target="__USERS__">0</div><div class="label">Aktivnih korisnika</div></div>
+    <div class="kpi"><div class="num" data-target="__SESS__">0</div><div class="label">Ukupno sesija</div></div>
+    <div class="kpi"><div class="num" data-target="__SAT__">0</div><div class="label">Zadovoljstvo (%)</div></div>
+    <div class="kpi"><div class="num" data-target="__RET__">0</div><div class="label">Mesečna zadržanost (%)</div></div>
+  </div>
+</section>
+
+<!-- Mini demo graf -->
+<section class="section reveal band" data-band="1">
+  <div class="chart-wrap">
+    <div style="font-weight:900;margin:0 0 10px 0">Produktivnost & Raspoloženje (poslednje sesije)</div>
+    <div class="legend"><div class="dot dot-prod"></div><div>Produktivnost</div><div class="dot dot-mood" style="margin-left:12px"></div><div>Raspoloženje</div></div>
+    <svg id="mmChart" viewBox="0 0 1100 360" width="100%" height="360" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="gProd" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
+        <linearGradient id="gMood" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#4EA3FF"/><stop offset="100%" stop-color="#7C5CFF"/></linearGradient>
+        <filter id="softGlow"><feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      <g id="grid"></g>
+      <path id="prodGlow" fill="none" stroke="#7C5CFF" stroke-opacity=".18" stroke-width="10" stroke-linecap="round" filter="url(#softGlow)"/>
+      <path id="moodGlow" fill="none" stroke="#4EA3FF" stroke-opacity=".18" stroke-width="10" stroke-linecap="round" filter="url(#softGlow)"/>
+      <path id="prodPath" fill="none" stroke="url(#gProd)" stroke-width="3" stroke-linecap="round"/>
+      <path id="moodPath" fill="none" stroke="url(#gMood)" stroke-width="3" stroke-linecap="round"/>
+      <g id="xlabels"></g>
+    </svg>
+  </div>
+</section>
+
+<!-- Kako radi -->
+<section class="section reveal band" data-band="2">
+  <h2 style="margin:0 0 12px 0">Kako radi MindMate?</h2>
+  <div class="timeline">
+    <div class="ti"><h4>1) Kratak check-in</h4><p>2 pitanja + beleška. Potpuno bez “frke”.</p></div>
+    <div class="ti"><h4>2) Mikro-navike</h4><p>5–10 minuta zadaci koji grade momentum.</p></div>
+    <div class="ti"><h4>3) Razgovor</h4><p>Empatičan chat u tvom tonu — motivacija bez pritiska.</p></div>
+    <div class="ti"><h4>4) Trendovi</h4><p>Jasni grafovi: raspoloženje, fokus, obrasci.</p></div>
+  </div>
+</section>
+
+<!-- Naučna osnova -->
+<section class="section reveal band" data-band="3">
+  <h2 style="margin:0 0 12px 0">Zasniva se na nauci</h2>
+  <div class="features">
+    <div class="f-card"><div class="f-title">CBT</div><p class="f-text">Promena obrasca misli kroz male eksperimente.</p></div>
+    <div class="f-card"><div class="f-title">ACT</div><p class="f-text">Prihvatanje, vrednosti i akcije uprkos nelagodi.</p></div>
+    <div class="f-card"><div class="f-title">Mindfulness</div><p class="f-text">Povratak u telo i trenutak; fokus i smirenost.</p></div>
+  </div>
+</section>
+
+<!-- Poređenje -->
+<section class="section reveal band" data-band="1">
+  <h2 style="margin:0 0 12px 0">Zašto MindMate?</h2>
+  <div class="compare">
+    <div class="comp-card">
+      <h3>Bez plana</h3>
+      <div class="li"><div class="dot dot-mood" style="width:8px;height:8px"></div><div>Nasumične navike, bez praćenja.</div></div>
+      <div class="li"><div class="dot dot-mood" style="width:8px;height:8px"></div><div>Preplavljenost, odustajanje posle par dana.</div></div>
+      <div class="li"><div class="dot dot-mood" style="width:8px;height:8px"></div><div>Bez jasnih trendova i povratne informacije.</div></div>
+    </div>
+    <div class="comp-card">
+      <h3>Sa MindMate</h3>
+      <div class="li"><div class="dot dot-prod" style="width:8px;height:8px"></div><div>Check-in od 2 pitanja + mikro-koraci (5–10 min).</div></div>
+      <div class="li"><div class="dot dot-prod" style="width:8px;height:8px"></div><div>Empatičan razgovor u tvom tonu.</div></div>
+      <div class="li"><div class="dot dot-prod" style="width:8px;height:8px"></div><div>Grafovi napretka i jasni obrasci.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Integracije / Trust -->
+<section class="section reveal band" data-band="2">
+  <h2 style="margin:0 0 12px 0">Privatnost & Integracije</h2>
+  <div class="integrations">
+    <div class="int-card">🔒 Lokalno čuvanje podataka (MVP)</div>
+    <div class="int-card">🧠 AI na srpskom</div>
+    <div class="int-card">📊 Analitika napretka</div>
+    <div class="int-card">📱 Radi na telefonu i računaru</div>
+  </div>
+</section>
+
+<!-- Testimonials -->
+<section class="section reveal band" data-band="3">
+  <div class="t-wrap">
+    <div class="t-rail" id="tRail">
+      <div class="t-card"><div class="t-name">Mila</div><div class="t-role">28 • Beograd</div><div>“Check-in me drži u ritmu. 5 minuta i osećam pomak.”</div></div>
+      <div class="t-card"><div class="t-name">Nikola</div><div class="t-role">31 • Novi Sad</div><div>“Sviđa mi se što je sve na srpskom i u mom fazonu.”</div></div>
+      <div class="t-card"><div class="t-name">Sara</div><div class="t-role">24 • Niš</div><div>“Grafovi mi jasno pokažu kada padam i zašto.”</div></div>
+      <div class="t-card"><div class="t-name">Vuk</div><div class="t-role">35 • Kragujevac</div><div>“Nije terapija, ali je odličan dnevni alat.”</div></div>
+    </div>
+    <div class="t-nav"><div class="t-btn" id="tPrev">◀</div><div class="t-btn" id="tNext">▶</div></div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section reveal band" data-band="1">
+  <div class="faq" id="faq">
+    <div class="faq-item"><button class="faq-q">Da li je MindMate zamena za terapiju?</button>
+      <div class="faq-a">Ne. Nije medicinski alat. Ako si u riziku — pozovi 112 i potraži stručnu pomoć.</div></div>
+    <div class="faq-item"><button class="faq-q">Koliko vremena mi treba dnevno?</button>
+      <div class="faq-a">Obično 3–5 minuta. Dovoljno da zadržiš momentum bez preplavljivanja.</div></div>
+    <div class="faq-item"><button class="faq-q">Kako čuvate privatnost?</button>
+      <div class="faq-a">Podaci su lokalno u okviru app-a za MVP; bez deljenja. Uvek možeš obrisati istoriju.</div></div>
+  </div>
+</section>
+
+<div class="sticky-cta" id="stickyCta">
+  <div class="inner">
+    <div class="copy">
+      <h3>Tvoj bolji dan počinje sada</h3>
+      <p>Uđi u ritam: check-in, mikro-navike, jasni trendovi.</p>
+    </div>
+    <div class="actions">
+      <a class="btn btn-primary fx-ripple" href="?home">Isprobaj besplatno</a>
+      <a class="btn btn-ghost fx-ripple" href="?home">Promeni sebe</a>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;color:#9AA3B2;margin-top:22px">© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>
+
+<script>
+// ===== Cursor + ripple =====
+const flower=document.getElementById('cursorFlower');
+document.addEventListener('mousemove',(e)=>{ flower.style.left=e.clientX+'px'; flower.style.top=e.clientY+'px'; });
+document.querySelectorAll('a,.btn,.t-btn,.ti,.f-card,.comp-card,.int-card,.t-card,.logo').forEach(el=>{
+  el.addEventListener('mouseenter',()=>flower.classList.add('cursor-boost'));
+  el.addEventListener('mouseleave',()=>flower.classList.remove('cursor-boost'));
+});
+document.addEventListener('click', function(e){
+  const b=e.target.closest('.fx-ripple'); if(!b) return;
+  const r=document.createElement('span'); r.className='ink';
+  const rect=b.getBoundingClientRect(); const size=Math.max(rect.width, rect.height);
+  Object.assign(r.style,{position:'absolute',borderRadius:'50%',background:'rgba(255,255,255,.45)',
+    width:size+'px',height:size+'px',left:(e.clientX-rect.left-size/2)+'px',top:(e.clientY-rect.top-size/2)+'px',
+    transform:'scale(0)',animation:'ripple .7s linear'});
+  b.appendChild(r); setTimeout(()=>r.remove(),700);
+}, {passive:true});
+
+// ===== Reveal on scroll (sporije) =====
+const io=new IntersectionObserver(es=>es.forEach((x,i)=>{
+  if(x.isIntersecting){
+    setTimeout(()=>x.target.classList.add('visible'), 120); // blagi delay
+  }
+}),{threshold:.18});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+// ===== Background band switching =====
+const b1=document.getElementById('band1'), b2=document.getElementById('band2'), b3=document.getElementById('band3');
+const bands=[b1,b2,b3];
+const bo=new IntersectionObserver(es=>{
+  es.forEach(en=>{
+    if(!en.isIntersecting) return;
+    const band = en.target.getAttribute('data-band');
+    bands.forEach((b,i)=>b.classList.toggle('show', (i+1)==band));
+  });
+},{threshold:.5});
+document.querySelectorAll('.band').forEach(s=>bo.observe(s));
+
+// ===== Global petals (lagano) =====
+const svgNS="http://www.w3.org/2000/svg"; const petals=document.getElementById('petals');
+function addPetal(scale, opacity, durMin, durMax){
+  const s=(12+Math.random()*22)*scale;
+  const g=document.createElementNS(svgNS,'g');
+  const p=document.createElementNS(svgNS,'path');
+  p.setAttribute('d','M10,0 C22,8 22,32 10,42 C-2,32 -2,8 10,0 Z');
+  if(!document.getElementById('petalGrad')){
+    const defs=document.createElementNS(svgNS,'defs');
+    const lg=document.createElementNS(svgNS,'linearGradient'); lg.id='petalGrad'; lg.setAttribute('x1','0'); lg.setAttribute('y1','0'); lg.setAttribute('x2','1'); lg.setAttribute('y2','1');
+    const s1=document.createElementNS(svgNS,'stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#7C5CFF');
+    const s2=document.createElementNS(svgNS,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','#4EA3FF');
+    lg.appendChild(s1); lg.appendChild(s2); defs.appendChild(lg); petals.appendChild(defs);
+  }
+  p.setAttribute('fill','url(#petalGrad)'); p.setAttribute('opacity',opacity); g.appendChild(p);
+  const x = Math.random()*window.innerWidth; const rot = (Math.random()*60 - 30);
+  g.setAttribute('transform',`translate(${x},-30) scale(${s/42}) rotate(${rot})`); petals.appendChild(g);
+  const drift = (-60 + Math.random()*120); const dur = durMin + Math.random()*(durMax-durMin);
+  const kyframes = [{transform:`translate(${x}px,-30px) scale(${s/42}) rotate(${rot}deg)`},
+                    {transform:`translate(${x+drift}px, ${window.innerHeight+60}px) scale(${s/42}) rotate(${rot+360}deg)`}];
+  g.animate(kyframes,{duration:dur,easing:'linear'}); setTimeout(()=>g.remove(), dur);
+}
+for(let i=0;i<16;i++) addPetal(1, .65, 7000, 11000);
+setInterval(()=>addPetal(1.0, .62, 8000, 13000), 1000);
+
+// ===== KPI count-up =====
+function countUp(el){const t=parseInt(el.getAttribute('data-target'))||0,d=1600,s=performance.now();
+  function tick(now){const p=Math.min((now-s)/d,1);el.textContent=Math.floor(t*(.1+.9*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)}
+  requestAnimationFrame(tick)}
+const kio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.num').forEach(countUp);kio.unobserve(x.target)}})},{threshold:.35});
+document.querySelectorAll('#kpiBlock').forEach(el=>kio.observe(el));
+
+// ===== Chart (SVG) =====
+const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=360,P=48,ymin=0,ymax=100;
+const grid=document.getElementById('grid'), xg=document.getElementById('xlabels'), svg=document.getElementById('mmChart');
+for(let i=0;i<=5;i++){const y=P+(H-2*P)*(i/5), l=document.createElementNS("http://www.w3.org/2000/svg","line");
+  l.setAttribute("x1",P);l.setAttribute("x2",W-P);l.setAttribute("y1",y);l.setAttribute("y2",y);l.setAttribute("stroke","rgba(255,255,255,.08)");grid.appendChild(l)}
+labels.forEach((lab,i)=>{const x=P+(W-2*P)*(i/(labels.length-1||1)), t=document.createElementNS("http://www.w3.org/2000/svg","text");
+  t.setAttribute("x",x);t.setAttribute("y",H-12);t.setAttribute("fill","#9AA3B2");t.setAttribute("font-size","12");t.setAttribute("text-anchor","middle");
+  t.textContent=lab.slice(5).replace("-","/");xg.appendChild(t)});
+function path(vals){const pts=vals.map((v,i)=>[P+(W-2*P)*(i/(vals.length-1||1)), P+(H-2*P)*(1-(v-ymin)/(ymax-ymin))]);
+  if(!pts.length)return ""; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=1;i<pts.length;i++){d+=` L ${pts[i][0]} ${pts[i][1]}`} return d}
+const prodPath=document.getElementById('prodPath'), moodPath=document.getElementById('moodPath');
+const prodGlow=document.getElementById('prodGlow'), moodGlow=document.getElementById('moodGlow');
+const d1=path(prod), d2=path(mood);
+prodGlow.setAttribute("d",d1); moodGlow.setAttribute("d",d2);
+prodPath.setAttribute("d",d1); moodPath.setAttribute("d",d2);
+function strokeAnim(p,d=1800){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
+const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){strokeAnim(prodPath,1700);setTimeout(()=>strokeAnim(moodPath,1900),200);cio.unobserve(svg)}})},{threshold:.3});
+cio.observe(svg);
+
+// ===== Testimonials carousel (hover scale fix već u CSS) =====
+(function(){const rail=document.getElementById('tRail');if(!rail) return; let i=0;
+  const cards=rail.children.length; function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+18)}px)`;}
+  document.getElementById('tPrev').onclick=()=>go(-1); document.getElementById('tNext').onclick=()=>go(1);
+})();
+
+// ===== FAQ toggle =====
+document.querySelectorAll('.faq-q').forEach(q=>q.addEventListener('click',()=>{
+  const a=q.parentElement.querySelector('.faq-a'); const open=a.style.maxHeight && a.style.maxHeight!=='0px';
+  a.style.maxHeight=open?'0':a.scrollHeight+'px'; a.style.padding=open?'0 16px':'12px 16px';
+}));
+
+// ===== Sticky CTA =====
+const sticky=document.getElementById('stickyCta'); let shown=false;
+function chk(){const st=scrollY||0, dh=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight), wh=innerHeight, ratio=(st+wh)/dh; const s=ratio>0.72;
+  if(s!==shown){shown=s; sticky.classList.toggle('show',s)}}
+addEventListener('scroll',chk,{passive:true}); addEventListener('resize',chk,{passive:true}); setTimeout(chk,400);
+</script>
 </body></html>
 """
 
 def render_landing():
-    # (skratio sam HTML: hero — ali sve ostalo iz tvog starog LANDING-a može ostati;
-    # ako želiš full, samo zameni ovaj string svojim punim LANDING-om, radi isto.)
-    st_html(LANDING, height=720, scrolling=True)
+    users, sessions, sat, avg_minutes, streaks, retention, nps = compute_metrics()
+    labels, prod, mood = compute_trend_series()
+    html = (LANDING_TEMPLATE
+            .replace("__SESS__", str(max(sessions,0)))
+            .replace("__USERS__", str(max(users,1)))
+            .replace("__SAT__", str(max(min(sat,100),0)))
+            .replace("__RET__", str(max(min(retention,100),0)))
+            .replace("__X_LABELS__", json.dumps(labels))
+            .replace("__P_SERIES__", json.dumps(prod))
+            .replace("__M_SERIES__", json.dumps(mood)))
+    st_html(html, height=6200, width=1280, scrolling=True)
 
-# ===== Stranice =====
+# ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
     st.markdown("### Tvoja kontrolna tabla")
     c1,c2,c3=st.columns(3)
@@ -503,16 +734,20 @@ def render_analytics():
     st.subheader("📈 Analitika")
     rows=sorted(_get_db()["checkins"], key=lambda r:r.get("date",""))
     if not rows:
-        st.info("Još nema podataka. Uradi prvi check-in."); return
+        st.info("Još nema podataka. Uradi prvi check-in.")
+        return
+
     df = pd.DataFrame(rows)
     df["total"] = df[["phq1","phq2","gad1","gad2"]].sum(axis=1)
     df["date"]  = pd.to_datetime(df["date"], errors="coerce")
     df.sort_values("date", inplace=True)
+
     fig1 = px.line(df, x="date", y="total", markers=True, title="Ukupan skor (PHQ2+GAD2) kroz vreme")
     fig1.update_layout(paper_bgcolor="#0B0D12", plot_bgcolor="#11141C", font_color="#E8EAEE",
                        xaxis_title="Datum", yaxis_title="Skor (0–12)",
                        margin=dict(l=10,r=10,t=50,b=10))
     st.plotly_chart(fig1, use_container_width=True)
+
     mood = (95 - df["total"]*4).clip(40, 100)
     prod = (92 - df["total"]*3 + (df.index%3==0)*2).clip(35, 100)
     fig2 = go.Figure()
@@ -524,26 +759,23 @@ def render_analytics():
                        margin=dict(l=10,r=10,t=50,b=10))
     st.plotly_chart(fig2, use_container_width=True)
 
-# ===== Render flow =====
-render_navbar()
+    try:
+        hh = pd.to_datetime(df["ts"], errors="coerce").dt.hour.dropna()
+        if not hh.empty:
+            fig3 = px.histogram(hh, nbins=24, title="Vreme dana kada radiš check-in")
+            fig3.update_layout(paper_bgcolor="#0B0D12", plot_bgcolor="#11141C", font_color="#E8EAEE",
+                               xaxis_title="Sat u danu", yaxis_title="Broj check-in-a",
+                               margin=dict(l=10,r=10,t=50,b=10))
+            st.plotly_chart(fig3, use_container_width=True)
+    except Exception:
+        pass
 
-# auth panel (ako je tražen)
-if show_auth in {"login","register"}:
-    render_auth_panel(show_auth)
-
+# ---------- Router ----------
 page=st.session_state.page
 if page=="landing": render_landing()
-elif page=="home":
-    if not is_authed(): st.info("Prijavi se da koristiš kontrolnu tablu."); render_auth_panel("login")
-    else: render_home()
-elif page=="chat":
-    if not is_authed(): st.info("Prijavi se da koristiš chat."); render_auth_panel("login")
-    else: render_chat()
-elif page=="checkin":
-    if not is_authed(): st.info("Prijavi se da radiš check-in."); render_auth_panel("login")
-    else: render_checkin()
-elif page=="analytics":
-    if not is_authed(): st.info("Prijavi se da vidiš analitiku."); render_auth_panel("login")
-    else: render_analytics()
+elif page=="home": render_home()
+elif page=="chat": render_chat()
+elif page=="checkin": render_checkin()
+elif page=="analytics": render_analytics()
 
-st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:16px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:18px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
