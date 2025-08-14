@@ -185,174 +185,107 @@ if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ---------- NAV (animated) ----------
+# ---------- NAV (Apple-style glass, clean) ----------
 st.markdown("""
 <style>
-/* Wrapper */
-.mm-nav{position:sticky;top:0;inset-inline:0;z-index:1000;}
-/* Bar */
-.mm-bar{
-  background: color-mix(in oklab, var(--bg) 80%, transparent);
-  -webkit-backdrop-filter: saturate(160%) blur(10px);
-  backdrop-filter: saturate(160%) blur(10px);
-  border-bottom:1px solid var(--ring);
-  transition: background .22s cubic-bezier(.22,.95,.57,1.01), box-shadow .22s, border-color .22s;
+/* Apple-style MindMate Navbar */
+:root{
+  --bg:#0B0D12; --panel:rgba(16,20,27,.72); --ink:#E8EAEE; --mut:#A2ACBA; --ring:rgba(255,255,255,.10);
+  --g1:#7C5CFF; --g2:#4EA3FF; --max:1180px;
 }
-.mm-bar.scrolled{ background: var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,.25); border-bottom-color: transparent; }
-.mm-inner{max-width:1180px;margin:0 auto;padding:10px 8px;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
-/* Brand */
-.mm-brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;text-decoration:none}
-.mm-dot{width:10px;height:10px;border-radius:50%;
-  background:linear-gradient(90deg,var(--g1),var(--g2));
-  box-shadow:0 0 12px color-mix(in oklab, var(--g1) 60%, transparent);
-}
-/* Links row */
-.mm-menu{display:flex;align-items:center;gap:10px}
-.mm-links{position:relative;display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px}
-.mm-link{
-  --padx:.9rem;
-  display:inline-flex;align-items:center;justify-content:center;height:40px;
-  padding:0 var(--padx);border-radius:999px;text-decoration:none;
-  color:var(--mut);font-weight:800;transition:color .16s, transform .16s;
-}
-.mm-link:hover{ color:var(--ink); transform:translateY(-1px); }
-/* Sliding indicator “pill” */
-.mm-indicator{
-  position:absolute; left:0; bottom:3px; height:34px; border-radius:999px;
-  background:rgba(255,255,255,.06); border:1px solid var(--ring);
-  transition: width .22s cubic-bezier(.22,.95,.57,1.01), transform .22s cubic-bezier(.22,.95,.57,1.01), opacity .22s;
-  transform: translateX(0); opacity:0; z-index:-1;
-}
-.mm-link.is-active ~ .mm-indicator{ opacity:1; }
-/* CTA */
-.mm-cta{
-  display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 1rem;
-  border-radius:999px;text-decoration:none;font-weight:800;color:#0B0D12;
-  background:linear-gradient(90deg,var(--g1),var(--g2)); border:1px solid var(--ring);
-  box-shadow:0 8px 20px rgba(0,0,0,.25); transition:transform .16s, box-shadow .16s;
-}
-.mm-cta:hover{ transform:translateY(-1px) scale(1.03); }
-/* Hamburger */
-.mm-toggle{
-  --bar:2px;
-  display:none; position:relative; width:38px; height:38px; border:0; background:transparent; border-radius:12px; cursor:pointer;
-}
-.mm-toggle span{
-  position:absolute; left:8px; right:8px; height:var(--bar); background:var(--ink);
-  border-radius:999px; transition: transform .22s cubic-bezier(.22,.95,.57,1.01), opacity .22s;
-}
-.mm-toggle span:nth-child(1){ top:11px; }
-.mm-toggle span:nth-child(2){ top:18px; }
-mm-toggle span:nth-child(3){ top:25px; }
-/* Mobile menu */
-@media (max-width: 900px){
-  .mm-toggle{ display:block; }
-  .mm-menu{
-    position:fixed; left:0; right:0; top:62px;
-    background:var(--bg);
-    border-bottom:1px solid var(--ring);
-    transform:translateY(-8px); opacity:0; pointer-events:none;
-    flex-direction:column; align-items:stretch; gap:.5rem; padding:.75rem 1rem 1rem;
-    transition: opacity .22s, transform .22s;
-  }
-  .mm-menu.open{ transform:translateY(0); opacity:1; pointer-events:auto; }
-  .mm-links{ justify-content:center; }
-  .mm-link{ height:44px; }
-  .mm-cta{ height:44px; }
-}
-/* Reduce motion */
-@media (prefers-reduced-motion: reduce){
-  .mm-bar, .mm-bar *{ transition:none !important; animation:none !重要; }
-}
+.nav-wrap{position:sticky;top:0;z-index:1000;backdrop-filter:saturate(140%) blur(14px);-webkit-backdrop-filter:saturate(140%) blur(14px);}
+.nav{max-width:var(--max);margin:0 auto;padding:10px 14px;display:flex;align-items:center;gap:12px;position:relative}
+.nav::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,var(--ring),transparent)}
+.bar-bg{position:absolute;inset:0;background:linear-gradient(180deg,color-mix(in oklab,var(--panel)90%,transparent),color-mix(in oklab,#0B0D12 95%,transparent));border-bottom:1px solid var(--ring);transition:box-shadow .24s ease,background .24s ease}
+.nav.sticky .bar-bg{box-shadow:0 10px 45px rgba(0,0,0,.35)}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-weight:900;letter-spacing:.2px}
+.dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));box-shadow:0 0 18px color-mix(in oklab,var(--g1)60%,transparent)}
+.spacer{flex:1}
+.links{display:flex;align-items:center;gap:6px;position:relative}
+.link{--padx:.9rem;position:relative;display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 var(--padx);border-radius:12px;text-decoration:none;font-weight:800;color:var(--mut)}
+.link:hover{color:var(--ink)}
+.link:focus-visible{outline:2px solid color-mix(in oklab, var(--g2) 60%, white); outline-offset:2px; border-radius:14px}
+.indicator{position:absolute;bottom:6px;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--g1),var(--g2));width:0;transform:translateX(0);transition:transform .24s cubic-bezier(.2,.8,.2,1),width .24s cubic-bezier(.2,.8,.2,1)}
+.cta{display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 16px;border-radius:999px;font-weight:900;text-decoration:none;color:#0B0D12;background:linear-gradient(90deg,var(--g1),var(--g2));border:1px solid var(--ring);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 10px 26px rgba(0,0,0,.35)}
+.cta:hover{filter:saturate(1.05)}
+/* Mobile */
+.burger{display:none;position:relative;width:38px;height:38px;border:0;background:transparent;border-radius:12px}
+.burger span{position:absolute;left:10px;right:10px;height:2px;background:var(--ink);border-radius:999px;transition:transform .24s,opacity .24s}
+.burger span:nth-child(1){top:11px}.burger span:nth-child(2){top:18px}.burger span:nth-child(3){top:25px}
+@media(max-width:920px){.links{display:none}.burger{display:block}}
+/* Mobile sheet */
+.sheet{position:fixed;inset:60px 10px auto;top:12px;background:rgba(16,20,27,.96);border:1px solid var(--ring);border-radius:16px;padding:10px;display:none;flex-direction:column;gap:6px}
+.sheet .link{height:46px;border-radius:10px;color:var(--ink);background:rgba(255,255,255,.04)}
+.sheet .cta{height:46px}
 </style>
-<div class="mm-nav">
-  <div class="mm-bar" id="mmBar">
-    <div class="mm-inner">
-      <a class="mm-brand" href="?landing"><div class="mm-dot"></div><div>MindMate</div></a>
-      <button class="mm-toggle" id="mmToggle" aria-label="Open menu" aria-expanded="false" aria-controls="mmMenu">
-        <span></span><span></span><span></span>
-      </button>
-      <nav class="mm-menu" id="mmMenu" aria-label="Glavna navigacija">
-        <div class="mm-links" id="mmLinks">
-          <a class="mm-link" href="?landing" data-page="landing">Welcome</a>
-          <a class="mm-link" href="?home" data-page="home">Početna</a>
-          <a class="mm-link" href="?chat" data-page="chat">Chat</a>
-          <a class="mm-link" href="?checkin" data-page="checkin">Check-in</a>
-          <a class="mm-link" href="?analytics" data-page="analytics">Analitika</a>
-          <span class="mm-indicator" id="mmIndicator" aria-hidden="true"></span>
-        </div>
-        <a class="mm-cta" href="?home">Kreni odmah</a>
-      </nav>
-    </div>
+<div class="nav-wrap">
+  <div class="nav" id="nav">
+    <div class="bar-bg"></div>
+    <a class="brand" href="?landing" aria-label="MindMate">
+      <span class="dot" aria-hidden="true"></span>
+      <span>MindMate</span>
+    </a>
+    <button class="burger" id="burger" aria-label="Meni" aria-expanded="false" aria-controls="sheet">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="spacer"></div>
+    <nav class="links" id="links" aria-label="Glavna navigacija">
+      <a class="link" data-page="landing" href="?landing">Welcome</a>
+      <a class="link" data-page="home" href="?home">Početna</a>
+      <a class="link" data-page="chat" href="?chat">Chat</a>
+      <a class="link" data-page="checkin" href="?checkin">Check-in</a>
+      <a class="link" data-page="analytics" href="?analytics">Analitika</a>
+      <span class="indicator" id="indicator" aria-hidden="true"></span>
+    </nav>
+    <a class="cta" href="?home">Kreni odmah</a>
   </div>
 </div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Brzi meni">
+  <a class="link" href="?landing">Welcome</a>
+  <a class="link" href="?home">Početna</a>
+  <a class="link" href="?chat">Chat</a>
+  <a class="link" href="?checkin">Check-in</a>
+  <a class="link" href="?analytics">Analitika</a>
+  <a class="cta" href="?home">Kreni odmah</a>
+</div>
 <script>
-(function(){
-  const bar = document.getElementById('mmBar');
-  const toggle = document.getElementById('mmToggle');
-  const menu = document.getElementById('mmMenu');
-  const linksWrap = document.getElementById('mmLinks');
-  const indicator = document.getElementById('mmIndicator');
-  const links = [...document.querySelectorAll('.mm-link')];
-  // Solid bg on scroll
-  const onScroll = () => bar.classList.toggle('scrolled', window.scrollY > 8);
-  onScroll(); addEventListener('scroll', onScroll, {passive:true});
-  // Active by query param
-  const qs = new URLSearchParams(location.search);
-  const key = ['landing','home','chat','checkin','analytics'].find(k => qs.has(k)) || 'landing';
-  const active = links.find(a => a.dataset.page === key) || links[0];
-  active.classList.add('is-active');
-  // Indicator move
-  function moveIndicator(el){
-    if(!el || !indicator) return;
-    const r = el.getBoundingClientRect();
-    const rw = linksWrap.getBoundingClientRect();
-    indicator.style.opacity = '1';
-    indicator.style.width = r.width + 'px';
-    indicator.style.transform = `translateX(${r.left - rw.left}px)`;
-  }
-  moveIndicator(active);
-  links.forEach(a=>{
-    a.addEventListener('mouseenter', ()=> moveIndicator(a));
-    a.addEventListener('focus', ()=> moveIndicator(a));
-    a.addEventListener('click', ()=>{
-      links.forEach(l=>l.classList.remove('is-active'));
-      a.classList.add('is-active'); moveIndicator(a);
-      if(menu.classList.contains('open')) setMenu(false);
-    });
-  });
-  linksWrap.addEventListener('mouseleave', ()=> moveIndicator(document.querySelector('.mm-link.is-active')));
-  // Mobile hamburger → X
-  function setMenu(open){
-    menu.classList.toggle('open', open);
-    toggle.setAttribute('aria-expanded', open);
-    const [a,b,c] = toggle.querySelectorAll('span');
-    if(open){
-      a.style.transform = 'translateY(7px) rotate(45deg)';
-      b.style.opacity = '0';
-      c.style.transform = 'translateY(-7px) rotate(-45deg)';
-      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el,i)=>{
-        el.style.transition = 'transform .22s, opacity .22s';
-        el.style.transitionDelay = (i*40)+'ms';
-        el.style.transform = 'translateY(0)';
-        el.style.opacity = '1';
-      });
-    }else{
-      a.style.transform = ''; b.style.opacity = ''; c.style.transform = '';
-      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el)=>{
-        el.style.transition = ''; el.style.transitionDelay = ''; el.style.transform = ''; el.style.opacity = '';
-      });
-    }
-  }
-  toggle?.addEventListener('click', ()=> setMenu(!menu.classList.contains('open')));
-  menu?.addEventListener('click', e => { if(e.target.closest('a')) setMenu(false); });
-  addEventListener('keydown', e => { if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); });
-  // Reposition on resize
-  let rAF=null; addEventListener('resize', ()=>{ cancelAnimationFrame(rAF); rAF=requestAnimationFrame(()=>moveIndicator(document.querySelector('.mm-link.is-active')||active)); });
-})();
+// Active underline logic
+const links=[...document.querySelectorAll('.links .link')];
+const indicator=document.getElementById('indicator');
+function setActive(el){
+  if(!el) return;
+  const r=el.getBoundingClientRect();
+  const wrap=el.parentElement.getBoundingClientRect();
+  indicator.style.width=r.width+'px';
+  indicator.style.transform=`translateX(${r.left-wrap.left}px)`;
+}
+const qs=new URLSearchParams(location.search);
+const key=['landing','home','chat','checkin','analytics'].find(k=>qs.has(k))||'landing';
+setActive(links.find(a=>a.dataset.page===key)||links[0]);
+links.forEach(a=>a.addEventListener('mouseenter',()=>setActive(a)));
+document.querySelector('.links').addEventListener('mouseleave',()=>setActive(links.find(a=>a.dataset.page===key)||links[0]));
+
+// Sticky shadow on scroll
+const nav=document.getElementById('nav');
+function onScroll(){ nav.classList.toggle('sticky', window.scrollY>6); }
+onScroll(); addEventListener('scroll', onScroll, {passive:true});
+
+// Mobile sheet
+const burger=document.getElementById('burger');
+const sheet=document.getElementById('sheet');
+function setSheet(open){
+  sheet.style.display=open?'flex':'none';
+  burger.setAttribute('aria-expanded', String(open));
+  const [a,b,c]=burger.querySelectorAll('span');
+  if(open){ a.style.transform='translateY(7px) rotate(45deg)'; b.style.opacity='0'; c.style.transform='translateY(-7px) rotate(-45deg)'; }
+  else{ a.style.transform=''; b.style.opacity=''; c.style.transform=''; }
+}
+burger.addEventListener('click', ()=> setSheet(sheet.style.display!=='flex'));
+addEventListener('keydown', e=>{ if(e.key==='Escape') setSheet(false); });
 </script>
 """, unsafe_allow_html=True)
 
+# query param routing (ostaje isto)
 qp=st.query_params
 if   "landing"  in qp: st.session_state.page="landing"
 elif "home"     in qp: st.session_state.page="home"
