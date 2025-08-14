@@ -1,6 +1,6 @@
-# app.py — MindMate: landing + Kendo-style navbar + Auth (login/signup) + Chat/Check-in/Analytics
+# app.py — MindMate + Login gate + Kendo-like navbar + Landing/Chat/Check-in/Analitika
 
-import os, json, requests, math
+import os, json, requests, math, re, hashlib, hmac
 import streamlit as st
 from datetime import datetime, date, timedelta
 from streamlit.components.v1 import html as st_html
@@ -8,6 +8,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+# ==============================
+# Konstante i ENV
+# ==============================
 APP_TITLE = "MindMate"
 DB_PATH   = os.environ.get("MINDMATE_DB", "mindmate_db.json")
 
@@ -17,69 +20,38 @@ OLLAMA_MODEL  = os.environ.get("OLLAMA_MODEL", "llama3.1")
 OPENAI_API_KEY= os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL  = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
+# USERS_JSON primer:
+# [{"email":"ja@primer.com","password":"mojalozinka","name":"Ja"},
+#  {"email":"ana@primer.com","password":"tajna","name":"Ana"}]
+USERS_JSON   = os.environ.get("USERS_JSON","")
+
+# ==============================
+# Pomoćno
+# ==============================
 def safe_rerun():
     if hasattr(st, "rerun"): st.rerun()
     else: st.experimental_rerun()
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 
-# ------------ Sesija / "auth" helpers ------------
-if "page" not in st.session_state: st.session_state.page="landing"
-if "chat_log" not in st.session_state: st.session_state.chat_log=[]
-if "user_email" not in st.session_state: st.session_state.user_email=None
-
-def is_authed() -> bool:
-    return bool(st.session_state.user_email)
-
-def set_user(email:str):
-    st.session_state.user_email = (email or "").strip() or None
-
-def logout():
-    st.session_state.user_email=None
-    # opcionalno: očisti logove četa samo za demo
-    # st.session_state.chat_log=[]
-
-def goto(p): 
-    st.session_state.page=p; safe_rerun()
-
-# ------------ Global stil ------------
-st.markdown("""
-<style>
-:root{
-  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2;
-  --g1:#7C5CFF; --g2:#4EA3FF; --ring:rgba(255,255,255,.10);
-}
-html,body{background:var(--bg); color:var(--ink)}
-.main .block-container{
-  padding-top:.6rem!important; padding-left:2rem!important; padding-right:2rem!important;
-  max-width:1280px!important; margin-inline:auto!important;
-}
-@media (max-width:900px){
-  .main .block-container{padding-left:1.2rem!important; padding-right:1.2rem!important}
-}
-.element-container > div:has(> iframe){display:flex; justify-content:center;}
-.stButton>button[kind="primary"]{
-  background:linear-gradient(90deg,var(--g1),var(--g2))!important;color:#0B0D12!important;
-  font-weight:800!important;border:none!important
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ------------ “Baza” ------------
+# ==============================
+# “Baza”
+# ==============================
 def _init_db():
     if not os.path.exists(DB_PATH):
         with open(DB_PATH, "w", encoding="utf-8") as f:
-            json.dump({"checkins": [], "chat_events": []}, f)
+            json.dump({"checkins": [], "chat_events": [], "users": []}, f)
     try:
         with open(DB_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
-            data = {"checkins": [], "chat_events": []}
+            data = {"checkins": [], "chat_events": [], "users": []}
         data.setdefault("checkins", [])
         data.setdefault("chat_events", [])
+        data.setdefault("users", [])
         return data
     except Exception:
-        return {"checkins": [], "chat_events": []}
+        return {"checkins": [], "chat_events": [], "users": []}
 
 def _save_db(db):
     try:
@@ -94,11 +66,84 @@ if "DB_CACHE" not in st.session_state:
 def _get_db(): return st.session_state.DB_CACHE
 def _persist_db(): _save_db(st.session_state.DB_CACHE)
 
+# ==============================
+# Auth helpers (jednostavan login)
+# ==============================
+SECRET_PEPPER = "mindmate-pepper-01"  # lagani dodatak hash-u (nije kritičan u MVP-u)
+
+def _hash_pw(pw: str) -> str:
+    return hashlib.sha256((pw + SECRET_PEPPER).encode("utf-8")).hexdigest()
+
+def _load_users_from_env_or_db():
+    # 1) iz ENV
+    users=[]
+    if USERS_JSON.strip():
+        try:
+            raw=json.loads(USERS_JSON)
+            for u in raw:
+                email=(u.get("email","") or "").lower().strip()
+                name = u.get("name") or email.split("@")[0]
+                pw   = u.get("password") or ""
+                if email and pw:
+                    users.append({"email":email, "name":name, "pw_hash":_hash_pw(pw)})
+        except Exception:
+            pass
+    # 2) iz baze
+    db=_get_db()
+    for u in db.get("users",[]):
+        if u.get("email") and u.get("pw_hash"):
+            users.append(u)
+    # 3) default demo nalog ako nema ni jednog
+    if not users:
+        users=[{"email":"demo@mindmate.app","name":"Demo","pw_hash":_hash_pw("demo123")}]
+    # normalizuj unique po emailu (ENV ima prednost)
+    dedup={}
+    for u in users:
+        dedup[u["email"]]=u
+    return list(dedup.values())
+
+def _ensure_user_saved(u):
+    db=_get_db()
+    exists = any((x.get("email")==u["email"]) for x in db["users"])
+    if not exists:
+        db["users"].append({"email":u["email"], "name":u.get("name") or "", "pw_hash":u["pw_hash"]})
+        _persist_db()
+
+def verify_user(email, password):
+    email=(email or "").lower().strip()
+    users=_load_users_from_env_or_db()
+    for u in users:
+        if u["email"]==email and hmac.compare_digest(u["pw_hash"], _hash_pw(password or "")):
+            _ensure_user_saved(u)
+            return {"email": u["email"], "name": u.get("name") or email.split("@")[0]}
+    return None
+
+def start_session(user_dict):
+    st.session_state.auth = {
+        "email": user_dict["email"],
+        "name":  user_dict.get("name") or user_dict["email"].split("@")[0],
+        "uid":   f"u_{abs(hash(user_dict['email']))%10_000_000}"
+    }
+
+def logout():
+    for k in ["auth","chat_log","page"]:
+        if k in st.session_state: del st.session_state[k]
+    safe_rerun()
+
+def is_authed():
+    return bool(st.session_state.get("auth"))
+
 def get_or_create_uid():
+    if is_authed():
+        return st.session_state.auth["uid"]
+    # fallback za gosta
     if "uid" not in st.session_state:
         st.session_state.uid = f"user_{int(datetime.utcnow().timestamp())}"
     return st.session_state.uid
 
+# ==============================
+# Aplikaciona “baza” dogadjaja
+# ==============================
 def save_checkin(uid, phq1, phq2, gad1, gad2, notes=""):
     db = _get_db()
     db["checkins"].append({
@@ -160,7 +205,9 @@ def compute_trend_series():
             prod.append(int(65+18*math.sin(t*3.14*.9)+7*t))
     return labels, prod, mood
 
-# ------------ Chat backends ------------
+# ==============================
+# Chat backends
+# ==============================
 def chat_ollama(messages):
     try:
         r = requests.post(f"{OLLAMA_HOST}/api/chat",
@@ -200,68 +247,121 @@ SYSTEM_PROMPT = (
     "Daj mikro-korake (5–10min) i traži kratke update-e."
 )
 
-# ------------ NAV (Kendo style) ------------
-def nav_html():
-    # desni deo: ili Sign up / Log in, ili Dashboard / Logout
-    if is_authed():
-        right = """
-        <a class="k-ghost" href="?home">Dashboard</a>
-        <a class="k-cta" href="?logout=1">Logout</a>
-        """
-    else:
-        right = """
-        <a class="k-ghost" href="?auth=login">Log in</a>
-        <a class="k-cta" href="?auth=signup">Sign up</a>
-        """
-    return f"""
+# ==============================
+# UI: Global stilovi
+# ==============================
+st.markdown("""
 <style>
-.k-wrap{{position:sticky;top:0;z-index:20;background:rgba(17,20,28,.65);backdrop-filter:blur(10px);
-         border-bottom:1px solid var(--ring)}}
-.k-nav{{max-width:1180px;margin:0 auto;padding:10px 6px;display:flex;align-items:center;justify-content:space-between}}
-.k-left{{display:flex;align-items:center;gap:16px}}
-.k-brand{{display:flex;align-items:center;gap:10px;font-weight:900;color:#E8EAEE}}
-.k-dot{{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));
-        box-shadow:0 0 12px rgba(124,92,255,.7)}}
-.k-links{{display:flex;gap:6px;flex-wrap:wrap}}
-.k-link,.k-ghost,.k-cta{{text-decoration:none; font-weight:700; border-radius:12px; padding:8px 12px;}}
-.k-link{{color:#E8EAEE;border:1px solid var(--ring);background:rgba(255,255,255,.02)}}
-.k-ghost{{color:#E8EAEE;border:1px solid var(--ring);background:rgba(255,255,255,.04)}}
-.k-cta{{color:#0B0D12;background:linear-gradient(90deg,var(--g1),var(--g2));}}
-.k-link:hover,.k-ghost:hover{{transform:translateY(-1px) scale(1.03);border-color:rgba(255,255,255,.18)}}
+:root{
+  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2;
+  --g1:#7C5CFF; --g2:#4EA3FF; --ring:rgba(255,255,255,.10);
+}
+html,body{background:var(--bg); color:var(--ink)}
+.main .block-container{
+  padding-top:.6rem!important; padding-left:2rem!important; padding-right:2rem!important;
+  max-width:1280px!important; margin-inline:auto!important;
+}
+@media (max-width:900px){
+  .main .block-container{padding-left:1.2rem!important; padding-right:1.2rem!important}
+}
+.element-container > div:has(> iframe){display:flex; justify-content:center;}
+.stButton>button[kind="primary"]{
+  background:linear-gradient(90deg,var(--g1),var(--g2))!important;color:#0B0D12!important;
+  font-weight:800!important;border:none!important
+}
+
+/* Kendo-like navbar */
+.k-navwrap{position:sticky;top:0;z-index:50;background:rgba(12,14,19,.72);backdrop-filter:blur(10px);border-bottom:1px solid var(--ring)}
+.k-nav{max-width:1180px;margin:0 auto;padding:10px 8px;display:flex;align-items:center;justify-content:space-between}
+.k-brand{display:flex;align-items:center;gap:10px;font-weight:900}
+.k-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));box-shadow:0 0 12px rgba(124,92,255,.7)}
+.k-links{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.k-link{padding:8px 12px;border:1px solid var(--ring);border-radius:12px;text-decoration:none;color:#E8EAEE;font-weight:700;background:rgba(255,255,255,.02);transition:transform .18s ease, border-color .18s}
+.k-link:hover{transform:translateY(-1px) scale(1.03);border-color:rgba(255,255,255,.18)}
+.k-cta{padding:9px 13px;border-radius:12px;text-decoration:none;font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12;border:1px solid transparent}
+.k-who{display:flex;align-items:center;gap:8px;color:#C7CEDA}
+.k-avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2))}
+.k-logout{padding:6px 10px;border:1px solid var(--ring);border-radius:10px;background:rgba(255,255,255,.03);color:#E8EAEE;font-weight:700}
+@media (max-width:720px){ .k-link{padding:6px 9px} }
 </style>
-<div class="k-wrap"><div class="k-nav">
-  <div class="k-left">
-    <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
-    <div class="k-links">
-      <a class="k-link" href="?landing">Welcome</a>
+""", unsafe_allow_html=True)
+
+# ==============================
+# Login ekran
+# ==============================
+def render_login():
+    st.markdown("""
+    <div style="max-width:480px;margin:8vh auto 2rem;background:#10141B;border:1px solid var(--ring);border-radius:16px;padding:22px">
+      <div style="display:flex;align-items:center;gap:10px;font-weight:900;margin-bottom:6px">
+        <div class="k-avatar"></div><div>MindMate</div>
+      </div>
+      <div style="color:#C7CEDA;margin-bottom:12px">Prijavi se da nastaviš.</div>
+    </div>
+    """, unsafe_allow_html=True)
+    with st.form("login"):
+        email = st.text_input("Email", placeholder="npr. demo@mindmate.app")
+        pw    = st.text_input("Lozinka", type="password", placeholder="•••••••")
+        col1, col2 = st.columns([1,1])
+        with col1:
+            ok = st.form_submit_button("Prijavi se", type="primary", use_container_width=True)
+        with col2:
+            guest = st.form_submit_button("Uđi kao gost", use_container_width=True)
+    if ok:
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email or ""):
+            st.error("Unesi validan email."); return
+        u = verify_user(email, pw)
+        if u:
+            start_session(u); st.success(f"Ćao, {u['name']}!"); safe_rerun()
+        else:
+            st.error("Pogrešan email ili lozinka. (Probaj demo: demo@mindmate.app / demo123)")
+    elif guest:
+        # gost -> samo ime iz emaila placeholder
+        name="Gost"
+        start_session({"email": f"guest-{int(datetime.utcnow().timestamp())}@local", "name": name})
+        st.info("Ušao si kao gost."); safe_rerun()
+
+# ==============================
+# Router + Navbar
+# ==============================
+if "page" not in st.session_state: st.session_state.page="landing"
+if "chat_log" not in st.session_state: st.session_state.chat_log=[]
+def goto(p): st.session_state.page=p; safe_rerun()
+
+def render_navbar():
+    who = st.session_state.auth["name"] if is_authed() else "Gost"
+    st.markdown(f"""
+<div class="k-navwrap"><div class="k-nav">
+  <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div class="k-links" id="kLinks">
+      <a class="k-link {'active' if st.session_state.page=='landing' else ''}" href="?landing">Welcome</a>
       <a class="k-link" href="?home">Početna</a>
       <a class="k-link" href="?chat">Chat</a>
       <a class="k-link" href="?checkin">Check-in</a>
       <a class="k-link" href="?analytics">Analitika</a>
     </div>
+    <div class="k-who"><div class="k-avatar"></div><div>{who}</div></div>
   </div>
-  <div class="k-links">{right}</div>
 </div></div>
-"""
-st.markdown(nav_html(), unsafe_allow_html=True)
+""", unsafe_allow_html=True)
+    # Logout dugme
+    with st.container():
+        cols = st.columns([0.82,0.18])
+        with cols[1]:
+            if st.button("Logout", key="lg", use_container_width=True):
+                logout()
 
-# query params → page/mode
-qp = st.query_params
-if "logout" in qp:
-    logout()
-    st.query_params.clear()
-    st.session_state.page="landing"
-
+# Query param router
+qp=st.query_params
 if   "landing"  in qp: st.session_state.page="landing"
 elif "home"     in qp: st.session_state.page="home"
 elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
-elif "auth"     in qp: 
-    st.session_state.page="auth"
-    st.session_state.auth_mode = qp.get("auth", "login")
 
-# ------------ LANDING (ostaje kao pre) ------------
+# ==============================
+# LANDING (HTML) — ostalo identično
+# ==============================
 LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -282,124 +382,94 @@ LANDING = """
 .btn:hover{transform:translateY(-1px) scale(1.03)}
 .btn-primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
 .btn-ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
-
-/* Hero */
 .hero{padding-top:var(--s-lg);padding-bottom:var(--s-lg)}
 .hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center}
 .h-eyebrow{display:inline-block;padding:7px 11px;border-radius:999px;border:1px solid var(--ring);font-size:12px;color:#C7CEDA;background:rgba(255,255,255,.05);margin-bottom:8px}
 .h-title{font-size:clamp(28px,4.6vw,56px);line-height:1.06;margin:0 0 8px}
 .h-sub{color:var(--mut);margin:0 0 10px}
 .cta{display:flex;gap:10px;flex-wrap:wrap}
-
 .mira{display:flex;justify-content:center}
 #flower{width:min(380px,68vw);filter:drop-shadow(0 14px 42px rgba(124,92,255,.35))}
 #flower .p{transform-origin:50% 50%;animation:sway 6.6s ease-in-out infinite}
 #flower .c{animation:pulse 6s ease-in-out infinite}
-@keyframes sway{ 0%{transform:rotate(0)} 50%{transform:rotate(2.2deg)} 100%{transform:rotate(0)}}
-@keyframes pulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
-
-/* VSL + orb */
+@keyframes sway{0%{transform:rotate(0)}50%{transform:rotate(2.2deg)}100%{transform:rotate(0)}}
+@keyframes pulse{0%,100%{opacity:.85}50%{opacity:1}}
 .vsl-area{position:relative}
 .orb-wrap{position:relative;height:90px}
-.orb{
-  position:absolute; inset:-180px 0 0 0; margin:auto; z-index:0;
-  width:min(980px,90vw); height:min(980px,90vw);
-  background:
-    radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.55), transparent 62%),
-    radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.50), transparent 66%),
-    radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.22), transparent 70%);
-  filter: blur(28px) saturate(1.05); opacity:.9; animation:orbBreath 12s ease-in-out infinite;
-}
-@keyframes orbBreath{0%,100%{transform:scale(1)} 50%{transform:scale(1.04)}}
+.orb{position:absolute; inset:-180px 0 0 0; margin:auto; z-index:0;width:min(980px,90vw); height:min(980px,90vw);
+  background:radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.55), transparent 62%),
+             radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.50), transparent 66%),
+             radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.22), transparent 70%);
+  filter: blur(28px) saturate(1.05); opacity:.9; animation:orbBreath 12s ease-in-out infinite;}
+@keyframes orbBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
 .vsl{position:relative;z-index:1;max-width:980px;margin:0 auto;border-radius:16px;border:1px solid var(--ring);padding:10px;background:rgba(255,255,255,.05);box-shadow:0 28px 90px rgba(0,0,0,.65)}
 .vsl iframe{width:100%;aspect-ratio:16/9;height:auto;min-height:240px;border:0;border-radius:10px}
-
-/* Trusted by */
 .trusted{display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px}
 .logos{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
 .logo{width:110px;height:42px;border-radius:12px;border:1px solid var(--ring);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;color:#C7CEDA;font-weight:800;letter-spacing:.4px;transition:transform .2s}
 .logo:hover{transform:translateY(-2px)}
-
-/* 3-up features */
 .feat .card{grid-column:span 4}
 @media (max-width:900px){ .hero-grid{grid-template-columns:1fr} .feat .card{grid-column:span 12} }
-
-/* Compare */
 .compare{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 @media (max-width:900px){ .compare{grid-template-columns:1fr} }
-
-/* Chart */
 .chart-wrap{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px}
 .legend{display:flex;gap:12px;align-items:center;color:#C7CEDA;margin-bottom:6px}.dot{width:12px;height:12px;border-radius:50%}
 .dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
-
-/* KPI */
 .kpis .card{grid-column:span 3;text-align:center}
 .knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .kcap{color:var(--mut)}
-
-/* Integrations */
 .int .card{grid-column:span 3;text-align:center;color:#C7CEDA}
 @media (max-width:900px){ .int .card{grid-column:span 6} }
-
-/* Testimonials */
 .twrap{border:1px solid var(--ring);border-radius:16px;padding:16px;background:#0F1219;position:relative;overflow:hidden}
 .trail{display:flex;gap:16px;transition:transform .45s ease}
 .tcard{min-width:calc(33.33% - 10.6px);background:rgba(255,255,255,.04);border:1px solid var(--ring);border-radius:12px;padding:14px}
 .tnav{position:absolute;top:50%;left:8px;right:8px;display:flex;justify-content:space-between;transform:translateY(-50%)}
 .tbtn{padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:transform .18s}
 .tbtn:hover{transform:scale(1.06)}
-
-/* BIG FAQ / PRICING / Reveal same as pre */
 .faq-zone{position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--ring);background:linear-gradient(180deg,#0F1219, #0E131A 55%, #0C1016)}
 .faq-clouds:before, .faq-clouds:after{{content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
-  background:
-    radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
-    radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
-    radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
+  background:radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
+             radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
+             radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
   filter:blur(12px); opacity:.7; animation:cloudFloat 26s linear infinite;}}
 .faq-clouds:after{{ inset:auto -25% -45% -25%; animation-duration:32s; opacity:.55 }}
 @keyframes cloudFloat{{0%{{transform:translateX(-6%)}} 50%{{transform:translateX(6%)}} 100%{{transform:translateX(-6%)}}}}
-.faq-header{{text-align:center; padding:28px 16px 10px}}
-.badge{{display:inline-flex;gap:6px;align-items:center;color:#C7CEDA;font-size:13px;padding:7px 12px;border:1px solid var(--ring);border-radius:999px;background:rgba(255,255,255,.05)}}
-.faq-title{{font-size:clamp(26px,4.2vw,44px);margin:8px 0 6px 0}}
-.faq-sub{{color:#A7B0BE;max-width:860px;margin:0 auto 18px}}
-.faq{{max-width:920px;margin:0 auto 26px;background:transparent;border:0}}
-.faq-item{{border:1px solid var(--ring);border-radius:14px;background:#0F1219;margin:12px 0;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.25); transition:transform .18s ease, box-shadow .18s ease}}
-.faq-item:hover{{transform:translateY(-1px); box-shadow:0 14px 36px rgba(0,0,0,.33)}}
-.faq-q{{width:100%;text-align:left;background:none;border:none;color:#E8EAEE;font-weight:800;padding:18px 18px;cursor:pointer; display:flex; align-items:center; justify-content:space-between}}
-.faq-q .txt{{pointer-events:none}}
-.chev{{width:22px;height:22px;border-radius:6px;border:1px solid var(--ring);display:grid;place-items:center;transition:transform .28s cubic-bezier(.2,.8,.2,1)}}
-.chev svg{{width:12px;height:12px}}
-.faq-a{{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 18px;transition:max-height .42s cubic-bezier(.2,.8,.2,1), padding .42s cubic-bezier(.2,.8,.2,1)}}
-.faq-a.open{{padding:12px 18px 18px}}
-.contact-mini{{display:flex;align-items:center;justify-content:center;gap:10px;color:#C7CEDA;padding:8px 0 18px}}
-
-.pricing .wrap{{border:1px solid var(--ring);border-radius:20px;padding:24px;background:#0F1219}}
-.price-grid{{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}}
-.price-card{{background:rgba(17,20,28,.9);border:1px solid var(--ring);border-radius:18px;padding:22px;box-shadow:0 16px 44px rgba(0,0,0,.35); transition:transform .18s, box-shadow .18s}}
-.price-card:hover{{transform:translateY(-2px) scale(1.02); box-shadow:0 22px 60px rgba(0,0,0,.45)}}
-.price-title{{font-weight:900;margin:0 0 6px 0}}
-.price-row{{display:flex;align-items:baseline;gap:8px}}
-.price-num{{font-size:clamp(28px,4vw,36px);font-weight:900}}
-.price-unit{{color:#9AA3B2;font-weight:700}}
-.hr{{height:1px;background:rgba(255,255,255,.08);margin:12px 0}}
-.li{{display:flex;gap:10px;align-items:flex-start;color:#C7CEDA;margin:8px 0}}
-.bullet{{width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));margin-top:8px}}
-.price-btn{{margin-top:14px;display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring)}}
-.price-btn.primary{{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}}
-.price-btn.ghost{{background:rgba(255,255,255,.06);color:#E8EAEE}}
-@media (max-width:900px){{ .price-grid{{grid-template-columns:1fr}} }}
-
-.reveal{{opacity:0;transform:translateY(20px);transition:opacity 1.2s ease, transform 1.2s ease}}
-.reveal.v{{opacity:1;transform:translateY(0)}}
-
-.footer{{color:#9AA3B2;text-align:center;padding:16px 0 22px}}
+.faq-header{text-align:center; padding:28px 16px 10px}
+.badge{display:inline-flex;gap:6px;align-items:center;color:#C7CEDA;font-size:13px;padding:7px 12px;border:1px solid var(--ring);border-radius:999px;background:rgba(255,255,255,.05)}
+.faq-title{font-size:clamp(26px,4.2vw,44px);margin:8px 0 6px 0}
+.faq-sub{color:#A7B0BE;max-width:860px;margin:0 auto 18px}
+.faq{max-width:920px;margin:0 auto 26px;background:transparent;border:0}
+.faq-item{border:1px solid var(--ring);border-radius:14px;background:#0F1219;margin:12px 0;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.25); transition:transform .18s ease, box-shadow .18s ease}
+.faq-item:hover{transform:translateY(-1px); box-shadow:0 14px 36px rgba(0,0,0,.33)}
+.faq-q{width:100%;text-align:left;background:none;border:none;color:#E8EAEE;font-weight:800;padding:18px 18px;cursor:pointer; display:flex; align-items:center; justify-content:space-between}
+.faq-q .txt{pointer-events:none}
+.chev{width:22px;height:22px;border-radius:6px;border:1px solid var(--ring);display:grid;place-items:center;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.chev svg{width:12px;height:12px}
+.faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 18px;transition:max-height .42s cubic-bezier(.2,.8,.2,1), padding .42s cubic-bezier(.2,.8,.2,1)}
+.faq-a.open{padding:12px 18px 18px}
+.contact-mini{display:flex;align-items:center;justify-content:center;gap:10px;color:#C7CEDA;padding:8px 0 18px}
+.pricing .wrap{border:1px solid var(--ring);border-radius:20px;padding:24px;background:#0F1219}
+.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
+.price-card{background:rgba(17,20,28,.9);border:1px solid var(--ring);border-radius:18px;padding:22px;box-shadow:0 16px 44px rgba(0,0,0,.35); transition:transform .18s, box-shadow .18s}
+.price-card:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 22px 60px rgba(0,0,0,.45)}
+.price-title{font-weight:900;margin:0 0 6px 0}
+.price-row{display:flex;align-items:baseline;gap:8px}
+.price-num{font-size:clamp(28px,4vw,36px);font-weight:900}
+.price-unit{color:#9AA3B2;font-weight:700}
+.hr{height:1px;background:rgba(255,255,255,.08);margin:12px 0}
+.li{display:flex;gap:10px;align-items:flex-start;color:#C7CEDA;margin:8px 0}
+.bullet{width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));margin-top:8px}
+.price-btn{margin-top:14px;display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring)}
+.price-btn.primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
+.price-btn.ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
+@media (max-width:900px){ .price-grid{grid-template-columns:1fr} }
+.reveal{opacity:0;transform:translateY(20px);transition:opacity 1.2s ease, transform 1.2s ease}
+.reveal.v{opacity:1;transform:translateY(0)}
+.footer{color:#9AA3B2;text-align:center;padding:16px 0 22px}
 </style>
 </head>
 <body>
 
-<!-- HERO -->
 <section class="section hero">
   <div class="container hero-grid reveal">
     <div>
@@ -408,7 +478,7 @@ LANDING = """
       <p class="h-sub">Kratki check-in, mikro-navike i empatičan razgovor. Jasni trendovi, tvoj ritam.</p>
       <div class="cta">
         <a class="btn btn-primary" href="?home">Kreni odmah</a>
-        <a class="btn btn-ghost" href="?auth=signup">Kreiraj nalog</a>
+        <a class="btn btn-ghost" href="?home">Pogledaj kako radi</a>
       </div>
     </div>
     <div class="mira">
@@ -429,8 +499,178 @@ LANDING = """
   </div>
 </section>
 
-<!-- (ostali delovi: VSL/Trusted/Features/Compare/Chart/KPIs/Integracije/Testimonials/FAQ/Pricing/CTA) -->
-<!-- ====== SKRAĆENO: isti sadržaj kao kod tebe (nije menjan) ====== -->
+<section class="section tight vsl-area">
+  <div class="container reveal">
+    <div class="orb-wrap"><div class="orb"></div></div>
+    <div class="vsl"><iframe src="https://www.youtube.com/embed/1qK0c9J_h10?rel=0&modestbranding=1" title="MindMate VSL" allowfullscreen></iframe></div>
+    <div class="trusted">
+      <div style="opacity:.9">Trusted by people from:</div>
+      <div class="logos">
+        <div class="logo">Health+</div><div class="logo">Calmify</div><div class="logo">WellLabs</div>
+        <div class="logo">FocusHub</div><div class="logo">MindBank</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section tight">
+  <div class="container">
+    <h2 class="h2">Zašto početi danas</h2>
+    <div class="grid-12 feat reveal">
+      <div class="card" style="grid-column:span 4"><b>2 pitanja dnevno</b><br><span style="color:#9AA3B2">Brz check-in bez frke; gradi ritam.</span></div>
+      <div class="card" style="grid-column:span 4"><b>Mikro-navike (5–10 min)</b><br><span style="color:#9AA3B2">Male akcije → vidljiv napredak.</span></div>
+      <div class="card" style="grid-column:span 4"><b>Grafovi i obrasci</b><br><span style="color:#9AA3B2">Jasno vidiš raspoloženje i fokus.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="section tight">
+  <div class="container reveal">
+    <h2 class="h2">Bez plana vs. sa MindMate</h2>
+    <div class="compare">
+      <div class="card"><b>Bez plana</b><ul style="color:#9AA3B2;margin:.5rem 0 0 1rem">
+        <li>Nasumične navike, bez praćenja</li><li>Preplavljenost</li><li>Nema jasnih trendova</li></ul></div>
+      <div class="card"><b>Sa MindMate</b><ul style="color:#9AA3B2;margin:.5rem 0 0 1rem">
+        <li>2 pitanja + mikro-koraci</li><li>Empatičan razgovor u tvom tonu</li><li>Grafovi napretka</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section class="section tight">
+  <div class="container reveal">
+    <div class="chart-wrap">
+      <div style="font-weight:900;margin-bottom:6px">Produktivnost & Raspoloženje (poslednje sesije)</div>
+      <div class="legend"><div class="dot dot-prod"></div><div>Produktivnost</div><div class="dot dot-mood" style="margin-left:12px"></div><div>Raspoloženje</div></div>
+      <svg id="mmChart" viewBox="0 0 1100 320" width="100%" height="320" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="gProd" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
+          <linearGradient id="gMood" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#4EA3FF"/><stop offset="100%" stop-color="#7C5CFF"/></linearGradient>
+        </defs>
+        <g id="grid"></g>
+        <path id="prodPath" fill="none" stroke="url(#gProd)" stroke-width="3" stroke-linecap="round"/>
+        <path id="moodPath" fill="none" stroke="url(#gMood)" stroke-width="3" stroke-linecap="round"/>
+        <g id="xlabels"></g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section class="section tight">
+  <div class="container">
+    <div class="grid-12 kpis reveal">
+      <div class="card"><div class="knum" data-k="__USERS__">0</div><div class="kcap">Aktivnih korisnika</div></div>
+      <div class="card"><div class="knum" data-k="__SESS__">0</div><div class="kcap">Ukupno sesija</div></div>
+      <div class="card"><div class="knum" data-k="__SAT__">0</div><div class="kcap">Zadovoljstvo (%)</div></div>
+      <div class="card"><div class="knum" data-k="__RET__">0</div><div class="kcap">Mesečna zadržanost (%)</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="section tight">
+  <div class="container">
+    <h2 class="h2">Privatnost & Integracije</h2>
+    <div class="grid-12 int reveal">
+      <div class="card">🔒 Lokalno čuvanje (MVP)</div>
+      <div class="card">🧠 AI na srpskom</div>
+      <div class="card">📊 Analitika napretka</div>
+      <div class="card">📱 Telefon & računar</div>
+    </div>
+  </div>
+</section>
+
+<section class="section tight">
+  <div class="container reveal">
+    <div class="twrap">
+      <div class="trail" id="trail">
+        <div class="tcard"><b>Mila</b><div style="color:#9AA3B2">28 • Beograd</div><div>“Check-in me drži u ritmu. 5 min i osećam pomak.”</div></div>
+        <div class="tcard"><b>Nikola</b><div style="color:#9AA3B2">31 • Novi Sad</div><div>“Sve je na srpskom i u mom fazonu.”</div></div>
+        <div class="tcard"><b>Sara</b><div style="color:#9AA3B2">24 • Niš</div><div>“Grafovi jasno pokažu kad padam i zašto.”</div></div>
+        <div class="tcard"><b>Vuk</b><div style="color:#9AA3B2">35 • Kragujevac</div><div>“Nije terapija, ali odličan dnevni alat.”</div></div>
+      </div>
+      <div class="tnav"><div class="tbtn" id="prev">◀</div><div class="tbtn" id="next">▶</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container faq-zone faq-clouds reveal">
+    <div class="faq-header">
+      <div class="badge">❓ Česta pitanja</div>
+      <h3 class="faq-title">Pitanja? Odgovori!</h3>
+      <div class="faq-sub">Brzi odgovori na najčešća pitanja o MindMate platformi.</div>
+    </div>
+
+    <div class="faq" id="faq">
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Da li je MindMate zamena za terapiju?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Ne. MindMate nije medicinski alat niti zamena za terapiju. Ako postoji rizik — pozovi 112 i potraži stručnu pomoć.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Koliko vremena mi treba dnevno?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Obično 3–5 minuta: 2 pitanja za check-in i jedan mali mikro-korak (5–10 min) kada želiš da dodaš momentum.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Kako čuvate privatnost?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Za MVP, podaci ostaju lokalno u okviru aplikacije i mogu se obrisati u bilo kom trenutku. Nema deljenja sa trećim stranama.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Da li radi na telefonu i računaru?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Da. Interfejs je responzivan i prilagođava se tvojoj rezoluciji (desktop, tablet, telefon).</div>
+      </div>
+    </div>
+
+    <div class="contact-mini">📧 Imaš pitanje? Piši: <span style="font-weight:700;margin-left:6px">hello@mindmate.app</span></div>
+  </div>
+</section>
+
+<section class="section pricing">
+  <div class="container reveal">
+    <div class="wrap">
+      <h2 class="h2" style="margin-bottom:10px">Odaberi svoj ritam</h2>
+      <div class="price-grid">
+        <div class="price-card">
+          <div class="price-title">Free Trial</div>
+          <div class="price-row"><div class="price-num">0</div><div class="price-unit">RSD / 14 dana</div></div>
+          <div class="hr"></div>
+          <div class="li"><div class="bullet"></div><div>Kompletne funkcije 14 dana</div></div>
+          <div class="li"><div class="bullet"></div><div>Dnevni check-in i analitika</div></div>
+          <div class="li"><div class="bullet"></div><div>AI chat (srpski)</div></div>
+          <a class="price-btn primary" href="?home">Započni besplatno</a>
+        </div>
+        <div class="price-card">
+          <div class="price-title">Pro</div>
+          <div class="price-row"><div class="price-num">300</div><div class="price-unit">RSD / mes</div></div>
+          <div class="hr"></div>
+          <div class="li"><div class="bullet"></div><div>Neograničen chat & check-in</div></div>
+          <div class="li"><div class="bullet"></div><div>Napredna analitika & ciljevi</div></div>
+          <div class="li"><div class="bullet"></div><div>Prioritetna podrška</div></div>
+          <a class="price-btn ghost" href="?home">Kreni sa Pro planom</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section tight">
+  <div class="container reveal" style="text-align:center">
+    <a class="btn btn-primary" href="?home">Kreni besplatno</a>
+  </div>
+</section>
 
 <div class="footer">© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>
 
@@ -438,6 +678,50 @@ LANDING = """
 // Reveal
 const ob=new IntersectionObserver(es=>es.forEach(x=>x.isIntersecting&&x.target.classList.add('v')),{threshold:.2});
 document.querySelectorAll('.reveal').forEach(el=>ob.observe(el));
+
+// KPI count-up
+function cu(el){const t=parseInt(el.getAttribute('data-k'))||0,d=1200,s=performance.now();
+function tick(n){const p=Math.min((n-s)/d,1);el.textContent=Math.floor(t*(.15+.85*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)} requestAnimationFrame(tick)}
+const ko=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.knum').forEach(cu);ko.unobserve(x.target)}}),{threshold:.3});
+document.querySelectorAll('.kpis').forEach(el=>ko.observe(el));
+
+// Chart
+const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=320,P=44,ymin=0,ymax=100;
+const grid=document.getElementById('grid'), xg=document.getElementById('xlabels'), svg=document.getElementById('mmChart');
+for(let i=0;i<=4;i++){const y=P+(H-2*P)*(i/4), l=document.createElementNS("http://www.w3.org/2000/svg","line");
+  l.setAttribute("x1",P);l.setAttribute("x2",W-P);l.setAttribute("y1",y);l.setAttribute("y2",y);l.setAttribute("stroke","rgba(255,255,255,.08)");grid.appendChild(l)}
+labels.forEach((lab,i)=>{const x=P+(W-2*P)*(i/(labels.length-1||1)), t=document.createElementNS("http://www.w3.org/2000/svg","text");
+  t.setAttribute("x",x);t.setAttribute("y",H-10);t.setAttribute("fill","#9AA3B2");t.setAttribute("font-size","12");t.setAttribute("text-anchor","middle");
+  t.textContent=lab.slice(5).replace("-","/");xg.appendChild(t)});
+function path(vals){const pts=vals.map((v,i)=>[P+(W-2*P)*(i/(vals.length-1||1)), P+(H-2*P)*(1-(v-ymin)/(ymax-ymin))]); if(!pts.length)return ""; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=1;i<pts.length;i++){d+=` L ${pts[i][0]} ${pts[i][1]}`} return d}
+const prodPath=document.getElementById('prodPath'), moodPath=document.getElementById('moodPath'); prodPath.setAttribute("d",path(prod)); moodPath.setAttribute("d",path(mood));
+function sAnim(p,d=1300){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
+const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){sAnim(prodPath,1200);setTimeout(()=>sAnim(moodPath,1500),150);cio.unobserve(svg)}})},{threshold:.35});
+cio.observe(svg);
+
+// Testimonials slider
+(function(){const rail=document.getElementById('trail'); if(!rail) return; let i=0; const cards=rail.children.length;
+function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+16)}px)`;}
+document.getElementById('prev').onclick=()=>go(-1); document.getElementById('next').onclick=()=>go(1);})();
+
+// FAQ logic
+document.querySelectorAll('.faq-item').forEach(item=>{
+  const btn=item.querySelector('.faq-q');
+  const chev=item.querySelector('.chev');
+  const panel=item.querySelector('.faq-a');
+  btn.addEventListener('click',()=>{
+    const open = btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded', String(!open));
+    chev.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
+    if(open){
+      panel.style.maxHeight = panel.scrollHeight + 'px';
+      requestAnimationFrame(()=>{ panel.style.maxHeight = '0px'; panel.classList.remove('open'); });
+    }else{
+      panel.classList.add('open');
+      panel.style.maxHeight = panel.scrollHeight + 'px';
+    }
+  });
+});
 </script>
 </body></html>
 """
@@ -445,102 +729,21 @@ document.querySelectorAll('.reveal').forEach(el=>ob.observe(el));
 def render_landing():
     users, sessions, sat, retention = compute_metrics()
     labels, prod, mood = compute_trend_series()
-    # (graf/faq/pricing deo je skraćen iznad — po potrebi možeš vratiti sve kako je bilo;
-    # za funkcionalnost auth-a nije bitno)
-    st_html(LANDING, height=1400, width=1280, scrolling=True)
+    html = (LANDING
+            .replace("__SESS__", str(max(sessions,0)))
+            .replace("__USERS__", str(max(users,1)))
+            .replace("__SAT__", str(max(min(sat,100),0)))
+            .replace("__RET__", str(max(min(retention,100),0)))
+            .replace("__X_LABELS__", json.dumps(labels))
+            .replace("__P_SERIES__", json.dumps(prod))
+            .replace("__M_SERIES__", json.dumps(mood)))
+    st_html(html, height=5200, width=1280, scrolling=True)
 
-# ------------ AUTH page (Kendo-like) ------------
-def render_auth(mode="login"):
-    mode = (mode or "login").lower()
-    title = "Login to MindMate" if mode=="login" else "Create your account"
-    cta   = "Sign In" if mode=="login" else "Create Account"
-    swap_txt = "Don't have an account? " if mode=="login" else "Already have an account? "
-    swap_link= "<a href='?auth=signup'>Sign up</a>" if mode=="login" else "<a href='?auth=login'>Log in</a>"
-
-    # kartica + brand pozadina
-    html = f"""
-<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<style>
-:root{{--bg:#0B0D12;--ink:#E8EAEE;--mut:#9AA3B2;--ring:rgba(255,255,255,.10);--g1:#7C5CFF;--g2:#4EA3FF}}
-body{{margin:0;background:radial-gradient(1200px 600px at 70% 20%, rgba(124,92,255,.15), transparent 60%),
-                 radial-gradient(1000px 520px at 80% 60%, rgba(78,163,255,.10), transparent 60%), #0B0D12; color:var(--ink);
-     font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
-.wrap{{max-width:980px;margin:4.5rem auto;padding:0 16px;display:grid;grid-template-columns:1fr 1fr;gap:22px}}
-.card{{background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:24px}}
-.brand{{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
-        border:1px solid var(--ring);border-radius:18px;position:relative;overflow:hidden}}
-.brand:before{{content:"";position:absolute;inset:-20% -20% auto -20%;height:240px;
-  background:radial-gradient(260px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
-             radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
-             radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
-  filter:blur(12px);opacity:.6}}
-.logo{{display:flex;align-items:center;gap:10px;margin-bottom:8px}}
-.dot{{width:12px;height:12px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));
-      box-shadow:0 0 12px rgba(124,92,255,.7)}}
-.h{{font-weight:900}}
-label{{display:block;font-size:13px;color:#C7CEDA;margin:8px 0 6px}}
-input[type=email]{{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ring);background:#0B0D12;color:var(--ink)}}
-.btn{{width:100%;margin-top:14px;padding:12px 16px;border-radius:12px;font-weight:900;border:1px solid var(--ring);cursor:pointer}}
-.primary{{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}}
-.ghost{{background:rgba(255,255,255,.06);color:#E8EAEE}}
-.sep{{display:flex;align-items:center;gap:10px;color:#9AA3B2;font-size:13px;margin:12px 0}}
-.sep:before,.sep:after{{content:"";flex:1;height:1px;background:rgba(255,255,255,.08)}}
-.small{{color:#9AA3B2;font-size:12px;margin-top:10px}}
-@media (max-width:900px){{.wrap{{grid-template-columns:1fr}}}}
-</style></head>
-<body>
-<div class="wrap">
-  <div class="card">
-    <div class="logo"><div class="dot"></div><div class="h">MindMate</div></div>
-    <h2 style="margin:.2rem 0 0">{title}</h2>
-    <p style="color:#9AA3B2;margin:.2rem 0 1rem">Please enter your email to continue.</p>
-    <form onsubmit="return false;">
-      <label>Email</label>
-      <input id="mm_email" type="email" placeholder="your@email.com" required />
-      <button class="btn primary" id="mm_submit">{cta}</button>
-    </form>
-    <div class="sep">Or continue with</div>
-    <button class="btn ghost">Login with Google</button>
-    <div class="small">{swap_txt}{swap_link}</div>
-    <div class="small">By clicking continue, you agree to our <u>Terms</u> and <u>Privacy</u>.</div>
-    <script>
-      document.getElementById('mm_submit').addEventListener('click', ()=>{
-        const v=document.getElementById('mm_email').value || '';
-        // trik: preusmeri nazad u Streamlit sa email-om kroz query
-        const params=new URLSearchParams(window.location.search);
-        params.delete('auth');
-        params.set('login_email', v);
-        window.location.search='?'+params.toString();
-      });
-    </script>
-  </div>
-  <div class="brand">
-    <div style="padding:22px">
-      <div style="font-weight:800;opacity:.9">“Kratki check-in nam je podigao fokus i smanjio brigu.”</div>
-      <div style="color:#9AA3B2;margin-top:6px">— MindMate korisnik</div>
-      <div style="height:420px;display:flex;align-items:center;justify-content:center;opacity:.9">
-        <svg viewBox="0 0 200 200" width="220" height="220" aria-hidden="true">
-          <defs>
-            <linearGradient id="lg" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
-          </defs>
-          <circle cx="100" cy="100" r="80" fill="none" stroke="url(#lg)" stroke-width="14" opacity=".25"/>
-          <circle cx="100" cy="100" r="64" fill="none" stroke="url(#lg)" stroke-width="10" opacity=".45"/>
-          <circle cx="100" cy="100" r="48" fill="none" stroke="url(#lg)" stroke-width="8"  opacity=".75"/>
-        </svg>
-      </div>
-    </div>
-  </div>
-</div>
-</body></html>
-"""
-    st_html(html, height=760, scrolling=True)
-
-# ------------ HOME / CHAT / CHECKIN / ANALYTICS ------------
+# ==============================
+# HOME / CHAT / CHECKIN / ANALYTICS
+# ==============================
 def render_home():
     st.markdown("### Tvoja kontrolna tabla")
-    if is_authed():
-        st.caption(f"Prijavljen: **{st.session_state.user_email}**")
     c1,c2,c3=st.columns(3)
     with c1:
         st.write("**Chat** — AI na srpskom, praktičan i podržavajući.")
@@ -588,18 +791,15 @@ def render_analytics():
     if not rows:
         st.info("Još nema podataka. Uradi prvi check-in.")
         return
-
     df = pd.DataFrame(rows)
     df["total"] = df[["phq1","phq2","gad1","gad2"]].sum(axis=1)
     df["date"]  = pd.to_datetime(df["date"], errors="coerce")
     df.sort_values("date", inplace=True)
-
     fig1 = px.line(df, x="date", y="total", markers=True, title="Ukupan skor (PHQ2+GAD2) kroz vreme")
     fig1.update_layout(paper_bgcolor="#0B0D12", plot_bgcolor="#11141C", font_color="#E8EAEE",
                        xaxis_title="Datum", yaxis_title="Skor (0–12)",
                        margin=dict(l=10,r=10,t=50,b=10))
     st.plotly_chart(fig1, use_container_width=True)
-
     mood = (95 - df["total"]*4).clip(40, 100)
     prod = (92 - df["total"]*3 + (df.index%3==0)*2).clip(35, 100)
     fig2 = go.Figure()
@@ -610,7 +810,6 @@ def render_analytics():
                        xaxis_title="Datum", yaxis_title="Skor (0–100)",
                        margin=dict(l=10,r=10,t=50,b=10))
     st.plotly_chart(fig2, use_container_width=True)
-
     try:
         hh = pd.to_datetime(df["ts"], errors="coerce").dt.hour.dropna()
         if not hh.empty:
@@ -622,31 +821,22 @@ def render_analytics():
     except Exception:
         pass
 
-# ------------ ROUTER + auth prijem e-maila ------------
-# preuzmi email iz query-a (dolazi iz JS-a sa auth stranice)
-login_email = qp.get("login_email")
-if login_email:
-    set_user(login_email)
-    # očisti query da ne ostane parametar
-    st.query_params.clear()
-    st.session_state.page="home"
+# ==============================
+# APP FLOW
+# ==============================
+# 1) Ako nije ulogovan → login gate
+if not is_authed():
+    render_login()
+    st.stop()
+
+# 2) Ulogovan → prikaži navbar i stranice
+render_navbar()
 
 page=st.session_state.page
-if page=="landing": 
-    render_landing()
-elif page=="home": 
-    render_home()
-elif page=="chat": 
-    render_chat()
-elif page=="checkin": 
-    if not is_authed():
-        st.info("Za check-in se prvo prijavi.")
-    render_checkin()
-elif page=="analytics": 
-    if not is_authed():
-        st.info("Za detaljnu analitiku se prvo prijavi.")
-    render_analytics()
-elif page=="auth": 
-    render_auth(st.session_state.get("auth_mode","login"))
+if page=="landing": render_landing()
+elif page=="home": render_home()
+elif page=="chat": render_chat()
+elif page=="checkin": render_checkin()
+elif page=="analytics": render_analytics()
 
 st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:16px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
