@@ -211,6 +211,208 @@ if "auth_ok" not in st.session_state: st.session_state.auth_ok=False
 if "auth_email" not in st.session_state: st.session_state.auth_email=""
 
 def goto(p): st.session_state.page=p; safe_rerun()
+    # --- PREVIEW: Apple-style Login / Register (vizuelni prikaz) ---
+LOGIN_REGISTER_PREVIEW = """
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<style>
+:root{
+  --bg:#0B0D12; --panel:#0F131B; --ink:#E8EAEE; --mut:#9AA3B2; --ring:rgba(255,255,255,.10);
+  --g1:#7C5CFF; --g2:#4EA3FF; --ok:#00D68F; --err:#FF6B6B;
+}
+*{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{min-height:760px;display:grid;place-items:center;padding:24px}
+.card{
+  width:min(980px,94vw); border-radius:24px; padding:0; overflow:hidden;
+  background:rgba(17,21,30,.68);
+  border:1px solid var(--ring);
+  -webkit-backdrop-filter:saturate(160%) blur(14px); backdrop-filter:saturate(160%) blur(14px);
+  box-shadow:0 30px 80px rgba(0,0,0,.55);
+}
+.head{
+  display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px;
+  border-bottom:1px solid var(--ring); background:rgba(255,255,255,.03);
+}
+.brand{display:flex; align-items:center; gap:10px; font-weight:900}
+.dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));box-shadow:0 0 12px rgba(124,92,255,.55)}
+.tabs{display:flex; gap:8px}
+.tab{
+  padding:8px 12px; border-radius:999px; border:1px solid var(--ring);
+  background:rgba(255,255,255,.04); color:#C7CEDA; font-weight:800; cursor:pointer;
+  transition:transform .16s, background .16s, color .16s;
+}
+.tab.active{ background:linear-gradient(90deg,var(--g1),var(--g2)); color:#0B0D12 }
+.tab:hover{ transform:translateY(-1px) }
+
+.body{display:grid; grid-template-columns:1.1fr .9fr; gap:22px; padding:20px}
+@media (max-width: 880px){ .body{grid-template-columns:1fr} }
+
+.hero{
+  position:relative; border:1px solid var(--ring); border-radius:20px; overflow:hidden;
+  background:
+    radial-gradient(40% 28% at 30% 10%, rgba(124,92,255,.25), transparent 70%),
+    radial-gradient(40% 28% at 70% 0%,  rgba(78,163,255,.22), transparent 72%),
+    linear-gradient(180deg, #0F1219, #0E1218 60%, #0C1016);
+  min-height:380px; display:flex; align-items:center; justify-content:center; padding:18px;
+}
+.hero-inner{max-width:520px; text-align:center}
+.eyebrow{
+  display:inline-block; padding:7px 12px; border:1px solid var(--ring); border-radius:999px;
+  font-size:12px; color:#C7CEDA; background:rgba(255,255,255,.05); margin-bottom:10px
+}
+.title{font-size:clamp(26px,3.8vw,42px); line-height:1.08; margin:6px 0 10px 0}
+.sub{color:var(--mut)}
+
+.form{
+  border:1px solid var(--ring); border-radius:20px; padding:18px; background:#0F1219;
+}
+.form h3{margin:0 0 12px; font-size:18px}
+.g{display:grid; gap:12px}
+.input{
+  display:flex; flex-direction:column; gap:6px;
+}
+.input label{font-size:12px; color:#C7CEDA}
+.input input{
+  height:44px; border-radius:12px; border:1px solid var(--ring); background:rgba(255,255,255,.03);
+  color:var(--ink); padding:0 12px; outline:none; transition:border-color .16s, box-shadow .16s;
+}
+.input input:focus{
+  border-color:rgba(124,92,255,.6);
+  box-shadow:0 0 0 3px rgba(124,92,255,.15);
+}
+.row{display:flex; gap:10px}
+.row .input{flex:1}
+
+.btn{
+  height:44px; border-radius:12px; font-weight:900; border:1px solid var(--ring);
+  display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:0 14px;
+  text-decoration:none; cursor:pointer; transition:transform .14s;
+}
+.btn:hover{ transform:translateY(-1px) }
+.btn-primary{ background:linear-gradient(90deg,var(--g1),var(--g2)); color:#0B0D12 }
+.btn-ghost{ background:rgba(255,255,255,.06); color:#E8EAEE }
+
+.help{display:flex; align-items:center; gap:8px; color:#C7CEDA; font-size:13px}
+.link{color:#B9C3D6; text-decoration:none; border-bottom:1px dotted rgba(185,195,214,.5)}
+.link:hover{color:#E8EAEE}
+
+.footer{padding:12px 18px; color:#9AA3B2; font-size:12px; text-align:center; border-top:1px solid var(--ring)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" id="card">
+    <div class="head">
+      <div class="brand"><div class="dot"></div><div>MindMate</div></div>
+      <div class="tabs">
+        <button class="tab active" id="tabLogin">Prijava</button>
+        <button class="tab" id="tabReg">Registracija</button>
+      </div>
+    </div>
+
+    <div class="body">
+      <!-- LEFT: HERO copy -->
+      <div class="hero">
+        <div class="hero-inner">
+          <div class="eyebrow">Mentalni wellness • Na srpskom</div>
+          <div class="title">Uloguj se i nastavi svoj ritam — <b>2 pitanja</b> dnevno, mikro-koraci i jasni trendovi.</div>
+          <div class="sub">Tvoji podaci ostaju privatni. Uvek možeš da obrišeš sve.</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: FORMS -->
+      <div>
+        <!-- LOGIN -->
+        <form class="form g" id="viewLogin" novalidate>
+          <h3>Prijava</h3>
+          <div class="input">
+            <label>Email</label>
+            <input type="email" placeholder="you@mindmate.app">
+          </div>
+          <div class="input">
+            <label>Lozinka</label>
+            <input type="password" placeholder="••••••••">
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+            <button class="btn btn-primary" type="button">Prijavi se</button>
+            <a class="btn btn-ghost" id="goReg" href="javascript:void(0)">Napravi nalog</a>
+          </div>
+          <div class="help">Zaboravljena lozinka? <a class="link" href="javascript:void(0)">Resetuj</a></div>
+        </form>
+
+        <!-- REGISTER -->
+        <form class="form g" id="viewReg" style="display:none" novalidate>
+          <h3>Registracija</h3>
+          <div class="row">
+            <div class="input">
+              <label>Ime</label>
+              <input type="text" placeholder="Ana">
+            </div>
+            <div class="input">
+              <label>Prezime</label>
+              <input type="text" placeholder="Petrović">
+            </div>
+          </div>
+          <div class="input">
+            <label>Email</label>
+            <input type="email" placeholder="you@mindmate.app">
+          </div>
+          <div class="row">
+            <div class="input">
+              <label>Lozinka</label>
+              <input type="password" placeholder="••••••••">
+            </div>
+            <div class="input">
+              <label>Ponovi lozinku</label>
+              <input type="password" placeholder="••••••••">
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+            <button class="btn btn-primary" type="button">Kreiraj nalog</button>
+            <a class="btn btn-ghost" id="goLogin" href="javascript:void(0)">Imam nalog</a>
+          </div>
+          <div class="help">Kreiranjem naloga prihvataš <a class="link" href="javascript:void(0)">Uslove korišćenja</a>.</div>
+        </form>
+      </div>
+    </div>
+
+    <div class="footer">© 2025 MindMate · Nije medicinski alat · Za hitne slučajeve — 112</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const tabLogin = document.getElementById('tabLogin');
+  const tabReg   = document.getElementById('tabReg');
+  const viewLogin= document.getElementById('viewLogin');
+  const viewReg  = document.getElementById('viewReg');
+  const goReg    = document.getElementById('goReg');
+  const goLogin  = document.getElementById('goLogin');
+
+  function setMode(mode){
+    const isLogin = mode === 'login';
+    tabLogin.classList.toggle('active', isLogin);
+    tabReg.classList.toggle('active', !isLogin);
+    viewLogin.style.display = isLogin ? 'grid' : 'none';
+    viewReg.style.display   = isLogin ? 'none'  : 'grid';
+  }
+
+  tabLogin?.addEventListener('click', ()=> setMode('login'));
+  tabReg?.addEventListener('click',   ()=> setMode('reg'));
+  goReg?.addEventListener('click',    ()=> setMode('reg'));
+  goLogin?.addEventListener('click',  ()=> setMode('login'));
+
+  // little entrance animation
+  const card = document.getElementById('card');
+  card.style.opacity = '0'; card.style.transform = 'translateY(8px)';
+  requestAnimationFrame(()=>{ setTimeout(()=>{ card.style.transition='opacity .5s ease, transform .5s ease';
+    card.style.opacity='1'; card.style.transform='translateY(0)';
+  }, 20); });
+})();
+</script>
+</body></html>
+"""
+
 
 # ---------- NAV (Apple-style, veća opacity) ----------
 def render_navbar():
