@@ -506,7 +506,15 @@ input[type=email]{{width:100%;padding:12px 14px;border-radius:12px;border:1px so
     <div class="small">By clicking continue, you agree to our <u>Terms</u> and <u>Privacy</u>.</div>
     <script>
       document.getElementById('mm_submit').addEventListener('click', ()=>{
-        const v=document.getElementById('mm_email').value || '';
+        st.markdown("""
+<script>
+document.getElementById('loginBtn').addEventListener('click', function() {
+    const v = document.getElementById('mm_email').value || '';
+    alert("Email: " + v);
+});
+</script>
+""", unsafe_allow_html=True)
+
         // trik: preusmeri nazad u Streamlit sa email-om kroz query
         const params=new URLSearchParams(window.location.search);
         params.delete('auth');
