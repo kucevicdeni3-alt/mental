@@ -1,5 +1,5 @@
-# app.py — MindMate: landing + BIG FAQ + PRICING + Početna/Chat/Check-in/Analitika
-# (sa Kendo-like sticky navbarom)
+# app.py — MindMate (clean Kendo-style navbar + landing + BIG FAQ + PRICING + Chat/Check-in/Analitika)
+# — single-file Streamlit app
 
 import os, json, requests, math
 import streamlit as st
@@ -24,103 +24,26 @@ def safe_rerun():
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 
-# ---------- Global stil ----------
+# ---------- Base theme ----------
 st.markdown("""
 <style>
 :root{
-  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2;
-  --g1:#7C5CFF; --g2:#4EA3FF; --ring:rgba(255,255,255,.10);
+  --bg:#0B0D12; --panel:#0F1219; --ink:#E8EAEE; --mut:#A3ADBF; --ring:rgba(255,255,255,.10);
+  --g1:#7C5CFF; --g2:#4EA3FF; --max:1180px;
 }
 html,body{background:var(--bg); color:var(--ink)}
-.main .block-container{
-  padding-top:0!important; padding-left:2rem!important; padding-right:2rem!important;
-  max-width:1280px!important; margin-inline:auto!important;
-}
-@media (max-width:900px){
-  .main .block-container{padding-left:1.2rem!important; padding-right:1.2rem!important}
-}
-.element-container > div:has(> iframe){display:flex; justify-content:center;}
+.main .block-container{padding-top:0!important; max-width:1280px!important;}
+/* Buttons */
 .stButton>button[kind="primary"]{
   background:linear-gradient(90deg,var(--g1),var(--g2))!important;color:#0B0D12!important;
-  font-weight:800!important;border:none!important
+  font-weight:800!important;border:none!important; border-radius:12px!important
 }
-
-/* ====== Kendo-like NAVBAR ====== */
-.k-wrap{position:sticky; top:0; z-index:50; backdrop-filter:blur(10px);
-        background:rgba(11,13,18,.55); border-bottom:1px solid var(--ring)}
-.k-nav{max-width:1180px; margin:0 auto; display:flex; align-items:center; justify-content:space-between;
-       padding:12px 6px;}
-.k-brand{display:flex; gap:10px; align-items:center; font-weight:900}
-.k-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));
-       box-shadow:0 0 12px rgba(124,92,255,.7)}
-.k-links{display:flex; gap:8px; align-items:center}
-.k-link{padding:8px 11px;border-radius:12px; text-decoration:none; color:var(--ink); font-weight:700;
-        border:1px solid var(--ring); background:rgba(255,255,255,.02); transition:transform .18s ease}
-.k-link:hover{transform:translateY(-1px) scale(1.03); border-color:rgba(255,255,255,.18)}
-.k-link.active{background:linear-gradient(90deg, #1a1f2b, #141925); border-color:rgba(255,255,255,.18)}
-.k-cta{padding:9px 12px; border-radius:12px; font-weight:800; text-decoration:none; color:#0B0D12;
-       background:linear-gradient(90deg,var(--g1),var(--g2)); border:1px solid transparent}
-.k-right{display:flex; gap:10px; align-items:center}
-
-/* Burger za < 900px */
-.k-burger{display:none; border:1px solid var(--ring); background:rgba(255,255,255,.06);
-          color:var(--ink); border-radius:10px; padding:6px 9px; font-weight:900; cursor:pointer}
-@media (max-width:900px){
-  .k-links{display:none}
-  .k-burger{display:inline-block}
-  .k-drawer{position:fixed; top:56px; left:0; right:0; background:#0F1219; border-bottom:1px solid var(--ring);
-            display:none; padding:10px 14px; z-index:60}
-  .k-drawer a{display:block; margin:6px 0; border:1px solid var(--ring); border-radius:10px;
-              text-decoration:none; color:var(--ink); padding:9px 12px; font-weight:700;
-              background:rgba(255,255,255,.03)}
-}
-
-/* Malo prostora ispod nav-a */
-.k-offset{height:8px}
+/* Center iframes in components */
+.element-container > div:has(> iframe){display:flex; justify-content:center;}
 </style>
-<div class="k-wrap">
-  <div class="k-nav">
-    <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
-    <div class="k-links" id="kLinks">
-      <a class="k-link" href="?landing">Welcome</a>
-      <a class="k-link" href="?home">Početna</a>
-      <a class="k-link" href="?chat">Chat</a>
-      <a class="k-link" href="?checkin">Check-in</a>
-      <a class="k-link" href="?analytics">Analitika</a>
-    </div>
-    <div class="k-right">
-      <button class="k-burger" id="kBurger">≡</button>
-      <a class="k-cta" href="?home">Kreni besplatno</a>
-    </div>
-  </div>
-  <div class="k-drawer" id="kDrawer">
-    <a href="?landing">Welcome</a>
-    <a href="?home">Početna</a>
-    <a href="?chat">Chat</a>
-    <a href="?checkin">Check-in</a>
-    <a href="?analytics">Analitika</a>
-  </div>
-</div>
-<div class="k-offset"></div>
-<script>
-(function(){
-  // set active link by query param
-  const params = new URLSearchParams(window.location.search);
-  const key = params.keys().next().value || 'landing';
-  document.querySelectorAll('.k-link').forEach(a=>{
-    const href = a.getAttribute('href')||'';
-    const q = href.replace('?','');
-    if(q === key) a.classList.add('active');
-  });
-  // burger toggle
-  const b = document.getElementById('kBurger');
-  const d = document.getElementById('kDrawer');
-  if(b && d){ b.addEventListener('click', ()=>{ d.style.display = (d.style.display==='block'?'none':'block'); }); }
-})();
-</script>
 """, unsafe_allow_html=True)
 
-# ---------- Local “baza” ----------
+# ---------- Tiny JSON “DB” ----------
 def _init_db():
     if not os.path.exists(DB_PATH):
         with open(DB_PATH, "w", encoding="utf-8") as f:
@@ -260,15 +183,66 @@ if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# sync sa query paramima (linkovi iz nav-a)
-qp=st.query_params
+# ---------- Kendo-style NAVBAR (single injection) ----------
+st.markdown("""
+<style>
+.k-wrap{position:sticky; top:0; z-index:99; backdrop-filter:blur(10px);
+  background:linear-gradient(180deg, rgba(17,20,28,.74), rgba(17,20,28,.55));
+  border-bottom:1px solid var(--ring)}
+.k-nav{max-width:var(--max); margin:0 auto; padding:12px 16px; display:flex; align-items:center; gap:12px}
+.k-brand{display:flex; align-items:center; gap:10px; font-weight:900}
+.k-dot{width:10px; height:10px; border-radius:50%; background:linear-gradient(90deg,var(--g1),var(--g2)); box-shadow:0 0 12px rgba(124,92,255,.7)}
+.k-links{display:flex; gap:8px; align-items:center; margin-left:auto}
+.k-link{padding:8px 12px; border-radius:12px; border:1px solid var(--ring); text-decoration:none; color:#E8EAEE; font-weight:700; background:rgba(255,255,255,.03); transition:transform .18s ease, border-color .18s ease}
+.k-link:hover{transform:translateY(-1px)}
+.k-link.active{background:rgba(255,255,255,.08)}
+.k-cta{padding:10px 14px; border-radius:12px; font-weight:800; text-decoration:none; border:1px solid var(--ring); background:linear-gradient(90deg,var(--g1),var(--g2)); color:#0B0D12}
+.k-burger{display:none; margin-left:8px; width:38px; height:38px; border-radius:12px; border:1px solid var(--ring); background:rgba(255,255,255,.06); color:#E8EAEE; font-weight:900}
+@media (max-width:860px){
+  .k-burger{display:block}
+  .k-links{position:fixed; top:66px; right:12px; left:12px; flex-direction:column; padding:10px; background:rgba(17,20,28,.9);
+    border:1px solid var(--ring); border-radius:14px; transform:scale(.98) translateY(-10px); opacity:0; pointer-events:none; transition:transform .18s ease, opacity .18s ease}
+  .k-links.open{transform:scale(1) translateY(0); opacity:1; pointer-events:auto}
+}
+</style>
+<div class="k-wrap">
+  <div class="k-nav">
+    <div class="k-brand"><div class="k-dot"></div><div>MindMate</div></div>
+    <div class="k-links" id="kLinks">
+      <a class="k-link" data-p="landing"   href="?landing">Welcome</a>
+      <a class="k-link" data-p="home"      href="?home">Početna</a>
+      <a class="k-link" data-p="chat"      href="?chat">Chat</a>
+      <a class="k-link" data-p="checkin"   href="?checkin">Check-in</a>
+      <a class="k-link" data-p="analytics" href="?analytics">Analitika</a>
+      <a class="k-cta"  href="?home">Kreni besplatno</a>
+    </div>
+    <button class="k-burger" id="kBurger">≡</button>
+  </div>
+</div>
+<script>
+(function(){
+  const burger=document.getElementById('kBurger');
+  const links=document.getElementById('kLinks');
+  if(burger&&links){
+    burger.addEventListener('click',()=>links.classList.toggle('open'));
+    document.addEventListener('click',(e)=>{ if(!links.contains(e.target)&&e.target!==burger) links.classList.remove('open')});
+  }
+  const qp=new URLSearchParams(window.location.search); const page=[...qp.keys()][0]||'landing';
+  document.querySelectorAll('.k-link').forEach(a=>{
+    if(a.dataset.p===page){ a.classList.add('active');}
+  });
+})();
+</script>
+""", unsafe_allow_html=True)
+
+qp = st.query_params
 if   "landing"  in qp: st.session_state.page="landing"
 elif "home"     in qp: st.session_state.page="home"
 elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# ---------- LANDING (sa PRICING ispod FAQ) ----------
+# ---------- LANDING (hero + orb + svg flower + metrics + testimonials + BIG FAQ + PRICING) ----------
 LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
@@ -278,16 +252,15 @@ LANDING = """
   --g1:#7C5CFF; --g2:#4EA3FF; --MAX:1180px;
   --s-xl:64px; --s-lg:48px; --s-md:32px; --s-sm:20px;
 }
-*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
-  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
+*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
 .container{width:min(var(--MAX),92vw);margin:0 auto}
 .section{padding-block:var(--s-lg)} .section.tight{padding-block:var(--s-md)}
 .h2{font-size:clamp(22px,2.6vw,30px);margin:0 0 12px 0}
 .grid-12{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
 .card{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px;transition:transform .2s ease, box-shadow .2s ease}
-.card:hover{transform:translateY(-2px) scale(1.03); box-shadow:0 14px 48px rgba(0,0,0,.35)}
-.btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .2s ease}
-.btn:hover{transform:translateY(-1px) scale(1.03)}
+.card:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 14px 48px rgba(0,0,0,.35)}
+.btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .18s ease}
+.btn:hover{transform:translateY(-1px)}
 .btn-primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
 .btn-ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
 
@@ -299,6 +272,7 @@ LANDING = """
 .h-sub{color:var(--mut);margin:0 0 10px}
 .cta{display:flex;gap:10px;flex-wrap:wrap}
 
+/* Flower */
 .mira{display:flex;justify-content:center}
 #flower{width:min(380px,68vw);filter:drop-shadow(0 14px 42px rgba(124,92,255,.35))}
 #flower .p{transform-origin:50% 50%;animation:sway 6.6s ease-in-out infinite}
@@ -306,7 +280,7 @@ LANDING = """
 @keyframes sway{ 0%{transform:rotate(0)} 50%{transform:rotate(2.2deg)} 100%{transform:rotate(0)}}
 @keyframes pulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
 
-/* VSL + orb */
+/* VSL orb */
 .vsl-area{position:relative}
 .orb-wrap{position:relative;height:90px}
 .orb{
@@ -343,8 +317,7 @@ LANDING = """
 
 /* KPI */
 .kpis .card{grid-column:span 3;text-align:center}
-.knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));
-      -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .kcap{color:var(--mut)}
 
 /* Integrations */
@@ -445,7 +418,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- VSL + Trusted by -->
+<!-- VSL + orb + logos -->
 <section class="section tight vsl-area">
   <div class="container reveal">
     <div class="orb-wrap"><div class="orb"></div></div>
@@ -460,7 +433,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- Benefiti -->
+<!-- Benefits -->
 <section class="section tight">
   <div class="container">
     <h2 class="h2">Zašto početi danas</h2>
@@ -472,7 +445,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- Poređenje -->
+<!-- Compare -->
 <section class="section tight">
   <div class="container reveal">
     <h2 class="h2">Bez plana vs. sa MindMate</h2>
@@ -485,7 +458,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- Mini demo graf -->
+<!-- Demo chart (static SVG) -->
 <section class="section tight">
   <div class="container reveal">
     <div class="chart-wrap">
@@ -505,7 +478,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- KPI -->
+<!-- KPIs -->
 <section class="section tight">
   <div class="container">
     <div class="grid-12 kpis reveal">
@@ -517,7 +490,7 @@ LANDING = """
   </div>
 </section>
 
-<!-- Integracije -->
+<!-- Integrations -->
 <section class="section tight">
   <div class="container">
     <h2 class="h2">Privatnost & Integracije</h2>
@@ -643,7 +616,7 @@ function tick(n){const p=Math.min((n-s)/d,1);el.textContent=Math.floor(t*(.15+.8
 const ko=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.knum').forEach(cu);ko.unobserve(x.target)}}),{threshold:.3});
 document.querySelectorAll('.kpis').forEach(el=>ko.observe(el));
 
-// Chart
+// Chart (draw simple lines, animate)
 const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=320,P=44,ymin=0,ymax=100;
 const grid=document.getElementById('grid'), xg=document.getElementById('xlabels'), svg=document.getElementById('mmChart');
 for(let i=0;i<=4;i++){const y=P+(H-2*P)*(i/4), l=document.createElementNS("http://www.w3.org/2000/svg","line");
@@ -687,7 +660,7 @@ document.querySelectorAll('.faq-item').forEach(item=>{
 def render_landing():
     users, sessions, sat, retention = compute_metrics()
     labels, prod, mood = compute_trend_series()
-    html_doc = (LANDING
+    html = (LANDING
             .replace("__SESS__", str(max(sessions,0)))
             .replace("__USERS__", str(max(users,1)))
             .replace("__SAT__", str(max(min(sat,100),0)))
@@ -695,10 +668,11 @@ def render_landing():
             .replace("__X_LABELS__", json.dumps(labels))
             .replace("__P_SERIES__", json.dumps(prod))
             .replace("__M_SERIES__", json.dumps(mood)))
-    st_html(html_doc, height=5200, width=1280, scrolling=True)
+    st_html(html, height=5200, width=1280, scrolling=True)
 
 # ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.markdown("### Tvoja kontrolna tabla")
     c1,c2,c3=st.columns(3)
     with c1:
@@ -716,6 +690,7 @@ def chat_reply(sys, log):
     return chat_openai(msgs) if CHAT_PROVIDER=="openai" else chat_ollama(msgs)
 
 def render_chat():
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.subheader("💬 Chat")
     st.caption(f"Backend: {CHAT_PROVIDER.upper()} | Model: {OLLAMA_MODEL if CHAT_PROVIDER=='ollama' else OPENAI_MODEL}")
     uid=get_or_create_uid()
@@ -729,6 +704,7 @@ def render_chat():
             st.markdown(reply); st.session_state.chat_log.append(("assistant",reply)); save_chat_event(uid,"assistant",reply)
 
 def render_checkin():
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.subheader("🗓️ Daily Check-in"); st.caption("PHQ-2/GAD-2 inspirisano, nije dijagnoza.")
     c1,c2=st.columns(2)
     with c1:
@@ -742,6 +718,7 @@ def render_checkin():
         save_checkin(get_or_create_uid(), phq1,phq2,gad1,gad2, notes); st.success("✅ Zabeleženo!")
 
 def render_analytics():
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.subheader("📈 Analitika")
     rows=sorted(_get_db()["checkins"], key=lambda r:r.get("date",""))
     if not rows:
@@ -789,4 +766,4 @@ elif page=="chat": render_chat()
 elif page=="checkin": render_checkin()
 elif page=="analytics": render_analytics()
 
-st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:16px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center;color:#9AA3B2;margin:18px 0 22px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
