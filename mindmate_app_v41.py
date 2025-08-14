@@ -45,7 +45,7 @@ html,body{background:var(--bg); color:var(--ink)}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- "Baza" ----------
+# ---------- “Baza” ----------
 def _init_db():
     if not os.path.exists(DB_PATH):
         with open(DB_PATH, "w", encoding="utf-8") as f:
@@ -186,120 +186,120 @@ if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
 # ---------- NAV (Kendo-like animations) ----------
-st.markdown(f"""
+st.markdown("""
 <style>
-.mm-root{{position:sticky;top:0;inset-inline:0;z-index:1000}}
+.mm-root{position:sticky;top:0;inset-inline:0;z-index:1000}
 
 /* Progress bar on top */
-.mm-prog{{position:absolute; inset:0 0 auto 0; height:3px; background:transparent; pointer-events:none}}
-.mm-prog .bar{{height:100%; width:0%;
+.mm-prog{position:absolute; inset:0 0 auto 0; height:3px; background:transparent; pointer-events:none}
+.mm-prog .bar{height:100%; width:0%;
   background:linear-gradient(90deg,var(--g1),var(--g2)); box-shadow:0 0 16px color-mix(in oklab,var(--g2) 40%, transparent);
-  transition:width .08s linear}}
+  transition:width .08s linear}
 
 /* Bar (glass) */
-.mm-bar{{
+.mm-bar{
   position:relative;
   background: color-mix(in oklab, var(--bg) 78%, transparent);
   -webkit-backdrop-filter: saturate(160%) blur(12px);
   backdrop-filter: saturate(160%) blur(12px);
   border-bottom:1px solid var(--ring);
   transition: background .22s cubic-bezier(.22,.95,.57,1.01), box-shadow .22s, border-color .22s;
-}}
-.mm-bar.scrolled{{ background: var(--bg); box-shadow: 0 14px 40px rgba(0,0,0,.28); border-bottom-color: transparent; }}
+}
+.mm-bar.scrolled{ background: var(--bg); box-shadow: 0 14px 40px rgba(0,0,0,.28); border-bottom-color: transparent; }
 
-.mm-inner{{max-width:1180px;margin:0 auto;padding:10px 10px;display:flex;align-items:center;justify-content:space-between;gap:.75rem}}
+.mm-inner{max-width:1180px;margin:0 auto;padding:10px 10px;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
 
 /* Brand */
-.mm-brand{{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;text-decoration:none;cursor:pointer}}
-.mm-dot{{width:10px;height:10px;border-radius:50%;
+.mm-brand{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:900;text-decoration:none}
+.mm-dot{width:10px;height:10px;border-radius:50%;
   background:linear-gradient(90deg,var(--g1),var(--g2));
   box-shadow:0 0 14px color-mix(in oklab, var(--g1) 60%, transparent);
-}}
+}
 
 /* Links row */
-.mm-menu{{display:flex;align-items:center;gap:12px}}
-.mm-links{{position:relative;display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px}}
-.mm-link{{
+.mm-menu{display:flex;align-items:center;gap:12px}
+.mm-links{position:relative;display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px}
+.mm-link{
   --padx:1rem;
   position:relative;
   display:inline-flex;align-items:center;justify-content:center;height:40px;
-  padding:0 var(--padx);border-radius:999px;text-decoration:none;cursor:pointer;
+  padding:0 var(--padx);border-radius:999px;text-decoration:none;
   color:var(--mut);font-weight:800;letter-spacing:.2px;
   transition:color .16s ease, transform .16s ease;
   will-change: transform;
-}}
-.mm-link:hover{{ color:var(--ink); }}
+}
+.mm-link:hover{ color:var(--ink); }
 
 /* Magnet hover shimmer */
-.mm-link:after{{
+.mm-link:after{
   content:""; position:absolute; inset:2px; border-radius:999px; pointer-events:none;
   background: radial-gradient(120px 40px at var(--mx,50%) var(--my,50%), rgba(255,255,255,.07), transparent 60%);
   opacity:0; transition:opacity .18s ease;
-}}
-.mm-link:hover:after{{ opacity:1; }}
+}
+.mm-link:hover:after{ opacity:1; }
 
 /* Sliding indicator */
-.mm-indicator{{
+.mm-indicator{
   position:absolute; left:0; bottom:3px; height:34px; border-radius:999px;
   background:rgba(255,255,255,.06);
   border:1px solid var(--ring);
   outline: 1px solid transparent;
   transform: translateX(0); opacity:0; z-index:-1;
-}}
-.mm-link.is-active ~ .mm-indicator{{ opacity:1; }}
+}
+.mm-link.is-active ~ .mm-indicator{ opacity:1; }
 
 /* CTA */
-.mm-cta{{
+.mm-cta{
   display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 1rem;
-  border-radius:999px;text-decoration:none;font-weight:800;color:#0B0D12;cursor:pointer;
+  border-radius:999px;text-decoration:none;font-weight:800;color:#0B0D12;
   background:linear-gradient(90deg,var(--g1),var(--g2)); border:1px solid var(--ring);
   box-shadow:0 10px 24px rgba(0,0,0,.28); transition:transform .16s, box-shadow .16s, filter .16s;
-}}
-.mm-cta:hover{{ transform:translateY(-1px) scale(1.03); }}
+}
+.mm-cta:hover{ transform:translateY(-1px) scale(1.03); }
 
 /* Hamburger */
-.mm-toggle{{
+.mm-toggle{
   --bar:2px;
   display:none; position:relative; width:38px; height:38px; border:0; background:transparent; border-radius:12px; cursor:pointer;
-}}
-.mm-toggle span{{
+}
+.mm-toggle span{
   position:absolute; left:8px; right:8px; height:var(--bar); background:var(--ink);
   border-radius:999px; transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s;
-}}
-.mm-toggle span:nth-child(1){{ top:11px; }}
-.mm-toggle span:nth-child(2){{ top:18px; }}
-.mm-toggle span:nth-child(3){{ top:25px; }}
+}
+.mm-toggle span:nth-child(1){ top:11px; }
+.mm-toggle span:nth-child(2){ top:18px; }
+.mm-toggle span:nth-child(3){ top:25px; }
 
-@keyframes popIn{{from{{transform:translateY(6px);opacity:0}} to{{transform:none;opacity:1}}}}
+@keyframes popIn{from{transform:translateY(6px);opacity:0} to{transform:none;opacity:1}}
 
 /* Mobile menu */
-@media (max-width: 900px){{
-  .mm-toggle{{ display:block; }}
-  .mm-menu{{
+@media (max-width: 900px){
+  .mm-toggle{ display:block; }
+  .mm-menu{
     position:fixed; left:0; right:0; top:62px;
     background:var(--bg);
     border-bottom:1px solid var(--ring);
     transform:translateY(-10px); opacity:0; pointer-events:none;
     flex-direction:column; align-items:stretch; gap:.5rem; padding:.75rem 1rem 1rem;
     transition: opacity .25s, transform .25s;
-  }}
-  .mm-menu.open{{ transform:translateY(0); opacity:1; pointer-events:auto; }}
-  .mm-links{{ justify-content:center; }}
-  .mm-link{{ height:44px; }}
-  .mm-cta{{ height:44px; animation:popIn .28s both }}
-}}
+  }
+  .mm-menu.open{ transform:translateY(0); opacity:1; pointer-events:auto; }
+  .mm-links{ justify-content:center; }
+  .mm-link{ height:44px; }
+  .mm-cta{ height:44px; animation:popIn .28s both }
+}
 
 /* Reduce motion */
-@media (prefers-reduced-motion: reduce){{
-  .mm-bar, .mm-bar *{{ transition:none !important; animation:none !important; }}
-}}
+@media (prefers-reduced-motion: reduce){
+  .mm-bar, .mm-bar *{ transition:none !important; animation:none !important; }
+}
 </style>
 
 <div class="mm-root">
   <div class="mm-bar" id="mmBar">
     <div class="mm-prog"><div class="bar" id="mmProgBar"></div></div>
     <div class="mm-inner">
-      <div class="mm-brand" onclick="navigateTo('landing')"><div class="mm-dot"></div><div>MindMate</div></div>
+      <a class="mm-brand" href="?landing"><div class="mm-dot"></div><div>MindMate</div></a>
 
       <button class="mm-toggle" id="mmToggle" aria-label="Open menu" aria-expanded="false" aria-controls="mmMenu">
         <span></span><span></span><span></span>
@@ -307,29 +307,21 @@ st.markdown(f"""
 
       <nav class="mm-menu" id="mmMenu" aria-label="Glavna navigacija">
         <div class="mm-links" id="mmLinks">
-          <div class="mm-link" data-page="landing" onclick="navigateTo('landing')">Welcome</div>
-          <div class="mm-link" data-page="home" onclick="navigateTo('home')">Početna</div>
-          <div class="mm-link" data-page="chat" onclick="navigateTo('chat')">Chat</div>
-          <div class="mm-link" data-page="checkin" onclick="navigateTo('checkin')">Check-in</div>
-          <div class="mm-link" data-page="analytics" onclick="navigateTo('analytics')">Analitika</div>
+          <a class="mm-link" href="?landing"  data-page="landing">Welcome</a>
+          <a class="mm-link" href="?home"     data-page="home">Početna</a>
+          <a class="mm-link" href="?chat"     data-page="chat">Chat</a>
+          <a class="mm-link" href="?checkin"  data-page="checkin">Check-in</a>
+          <a class="mm-link" href="?analytics"data-page="analytics">Analitika</a>
           <span class="mm-indicator" id="mmIndicator" aria-hidden="true"></span>
         </div>
-        <div class="mm-cta" onclick="navigateTo('home')">Kreni odmah</div>
+        <a class="mm-cta" href="?home">Kreni odmah</a>
       </nav>
     </div>
   </div>
 </div>
 
 <script>
-// Navigation function
-function navigateTo(page) {{
-  const currentPage = "{st.session_state.page}";
-  if (currentPage !== page) {{
-    window.parent.postMessage({{type: 'navigate', page: page}}, '*');
-  }}
-}}
-
-(function(){{
+(function(){
   const bar = document.getElementById('mmBar');
   const toggle = document.getElementById('mmToggle');
   const menu = document.getElementById('mmMenu');
@@ -338,147 +330,103 @@ function navigateTo(page) {{
   const links = [...document.querySelectorAll('.mm-link')];
   const prog = document.getElementById('mmProgBar');
 
-  // Wait for DOM to be ready
-  if (!bar || !toggle || !menu || !linksWrap || !indicator || !prog) {{
-    setTimeout(arguments.callee, 100);
-    return;
-  }}
-
   // 1) Solid bg + progress on scroll
-  const onScroll = () => {{
+  const onScroll = () => {
     bar.classList.toggle('scrolled', window.scrollY > 8);
     const h = document.documentElement;
     const max = (h.scrollHeight - h.clientHeight) || 1;
     const p = Math.max(0, Math.min(1, h.scrollTop / max));
     prog.style.width = (p*100).toFixed(1) + '%';
-  }};
-  onScroll(); 
-  addEventListener('scroll', onScroll, {{passive:true}});
+  };
+  onScroll(); addEventListener('scroll', onScroll, {passive:true});
 
-  // 2) Active page
-  const currentPage = "{st.session_state.page}";
-  const active = links.find(l => l.dataset.page === currentPage) || links[0];
-  if (active) {{
-    links.forEach(l => l.classList.remove('is-active'));
-    active.classList.add('is-active');
-  }}
+  // 2) Active page from query
+  const qs = new URLSearchParams(location.search);
+  const key = ['landing','home','chat','checkin','analytics'].find(k => qs.has(k)) || 'landing';
+  const active = links.find(a => a.dataset.page === key) || links[0];
+  active.classList.add('is-active');
 
   // 3) Spring indicator
   let targetX = 0, targetW = 0;
   let x = 0, w = 0, vx = 0, vw = 0;
   const stiffness = 0.18, damping = 0.75;
-  
-  function measure(el){{
-    if (!el || !linksWrap) return;
+  function measure(el){
     const r = el.getBoundingClientRect();
     const rw = linksWrap.getBoundingClientRect();
     targetX = r.left - rw.left;
     targetW = r.width;
     indicator.style.opacity = '1';
-    indicator.style.transform = `translateX(${{x}}px)`;
+    indicator.style.transform = `translateX(${x}px)`;
     indicator.style.width = w + 'px';
-  }}
-  
-  function animate(){{
+  }
+  function animate(){
     const ax = (targetX - x) * stiffness; vx = (vx + ax) * damping; x += vx;
     const aw = (targetW - w) * stiffness; vw = (vw + aw) * damping; w += vw;
-    indicator.style.transform = `translateX(${{x}}px)`;
+    indicator.style.transform = `translateX(${x}px)`;
     indicator.style.width = w + 'px';
     requestAnimationFrame(animate);
-  }}
-  
-  if (active) {{
-    measure(active); 
-    requestAnimationFrame(animate);
-  }}
+  }
+  measure(active); requestAnimationFrame(animate);
 
-  links.forEach(a=>{{
+  links.forEach(a=>{
     a.addEventListener('mouseenter', ()=> measure(a));
     a.addEventListener('focus', ()=> measure(a));
-    a.addEventListener('click', ()=>{{
+    a.addEventListener('click', ()=>{
       links.forEach(l=>l.classList.remove('is-active'));
-      a.classList.add('is-active'); 
-      measure(a);
+      a.classList.add('is-active'); measure(a);
       if(menu.classList.contains('open')) setMenu(false);
-    }});
+    });
     // 4) Magnet hover
-    a.addEventListener('mousemove', (e)=>{{
+    a.addEventListener('mousemove', (e)=>{
       const r = a.getBoundingClientRect();
       const mx = ((e.clientX - r.left) / r.width)*100;
       const my = ((e.clientY - r.top) / r.height)*100;
-      a.style.transform = `translate(${{(mx-50)*.06}}px, ${{(my-50)*.06}}px)`;
+      a.style.transform = `translate(${(mx-50)*.06}px, ${(my-50)*.06}px)`;
       a.style.setProperty('--mx', mx+'%'); a.style.setProperty('--my', my+'%');
-    }});
-    a.addEventListener('mouseleave', ()=>{{
+    });
+    a.addEventListener('mouseleave', ()=>{
       a.style.transform = '';
       a.style.removeProperty('--mx'); a.style.removeProperty('--my');
-    }});
-  }});
-  
-  linksWrap.addEventListener('mouseleave', ()=> {{
-    const activeEl = document.querySelector('.mm-link.is-active');
-    if (activeEl) measure(activeEl);
-  }});
+    });
+  });
+  linksWrap.addEventListener('mouseleave', ()=> measure(document.querySelector('.mm-link.is-active')));
 
   // 5) Hamburger → X + stagger items
-  function setMenu(open){{
+  function setMenu(open){
     menu.classList.toggle('open', open);
     toggle.setAttribute('aria-expanded', open);
     const [a,b,c] = toggle.querySelectorAll('span');
-    if(open){{
+    if(open){
       a.style.transform = 'translateY(7px) rotate(45deg)';
       b.style.opacity = '0';
       c.style.transform = 'translateY(-7px) rotate(-45deg)';
-      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el,i)=>{{
+      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el,i)=>{
         el.style.transition = 'transform .22s, opacity .22s';
         el.style.transitionDelay = (i*40)+'ms';
         el.style.transform = 'translateY(0)';
         el.style.opacity = '1';
-      }});
-    }}else{{
+      });
+    }else{
       a.style.transform = ''; b.style.opacity = ''; c.style.transform = '';
-      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el)=>{{
+      [...menu.querySelectorAll('.mm-link, .mm-cta')].forEach((el)=>{
         el.style.transition = ''; el.style.transitionDelay = ''; el.style.transform = ''; el.style.opacity = '';
-      }});
-    }}
-  }}
-  
+      });
+    }
+  }
   toggle?.addEventListener('click', ()=> setMenu(!menu.classList.contains('open')));
-  menu?.addEventListener('click', e => {{ 
-    if(e.target.closest('.mm-link') || e.target.closest('.mm-cta')) setMenu(false); 
-  }});
-  addEventListener('keydown', e => {{ 
-    if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); 
-  }});
+  menu?.addEventListener('click', e => { if(e.target.closest('a')) setMenu(false); });
+  addEventListener('keydown', e => { if(e.key==='Escape' && menu.classList.contains('open')) setMenu(false); });
 
   // 6) Re-measure on resize
-  let raf=null; 
-  addEventListener('resize', ()=>{{
+  let raf=null; addEventListener('resize', ()=>{
     if(raf) cancelAnimationFrame(raf);
-    raf=requestAnimationFrame(()=> {{
-      const activeEl = document.querySelector('.mm-link.is-active');
-      if (activeEl) measure(activeEl);
-    }});
-  }});
-}})();
+    raf=requestAnimationFrame(()=> measure(document.querySelector('.mm-link.is-active') || active));
+  });
+})();
 </script>
 """, unsafe_allow_html=True)
 
-# Listen for navigation messages
-st.markdown("""
-<script>
-window.addEventListener('message', function(event) {
-    if (event.data && event.data.type === 'navigate') {
-        window.parent.postMessage({
-            type: 'streamlit:setQueryParams',
-            queryParams: {[event.data.page]: ''}
-        }, '*');
-    }
-});
-</script>
-""", unsafe_allow_html=True)
-
-# Query params -> router
+# Query params -> router (kao i do sada)
 qp=st.query_params
 if   "landing"  in qp: st.session_state.page="landing"
 elif "home"     in qp: st.session_state.page="home"
@@ -503,7 +451,7 @@ LANDING = """
 .grid-12{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
 .card{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px;transition:transform .2s ease, box-shadow .2s ease}
 .card:hover{transform:translateY(-2px) scale(1.03); box-shadow:0 14px 48px rgba(0,0,0,.35)}
-.btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .2s ease;cursor:pointer}
+.btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .2s ease}
 .btn:hover{transform:translateY(-1px) scale(1.03)}
 .btn-primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
 .btn-ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
@@ -616,7 +564,7 @@ LANDING = """
 .hr{height:1px;background:rgba(255,255,255,.08);margin:12px 0}
 .li{display:flex;gap:10px;align-items:flex-start;color:#C7CEDA;margin:8px 0}
 .bullet{width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));margin-top:8px}
-.price-btn{margin-top:14px;display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring);cursor:pointer}
+.price-btn{margin-top:14px;display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring)}
 .price-btn.primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
 .price-btn.ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
 @media (max-width:900px){ .price-grid{grid-template-columns:1fr} }
@@ -639,8 +587,8 @@ LANDING = """
       <h1 class="h-title">Preusmeri 80% briga u konkretne korake — za 5 minuta dnevno.</h1>
       <p class="h-sub">Kratki check-in, mikro-navike i empatičan razgovor. Jasni trendovi, tvoj ritam.</p>
       <div class="cta">
-        <div class="btn btn-primary" onclick="navigateToHome()">Kreni odmah</div>
-        <div class="btn btn-ghost" onclick="navigateToHome()">Pogledaj kako radi</div>
+        <a class="btn btn-primary" href="?home">Kreni odmah</a>
+        <a class="btn btn-ghost" href="?home">Pogledaj kako radi</a>
       </div>
     </div>
     <div class="mira">
@@ -751,10 +699,10 @@ LANDING = """
   <div class="container reveal">
     <div class="twrap">
       <div class="trail" id="trail">
-        <div class="tcard"><b>Mila</b><div style="color:#9AA3B2">28 • Beograd</div><div>"Check-in me drži u ritmu. 5 min i osećam pomak."</div></div>
-        <div class="tcard"><b>Nikola</b><div style="color:#9AA3B2">31 • Novi Sad</div><div>"Sve je na srpskom i u mom fazonu."</div></div>
-        <div class="tcard"><b>Sara</b><div style="color:#9AA3B2">24 • Niš</div><div>"Grafovi jasno pokažu kad padam i zašto."</div></div>
-        <div class="tcard"><b>Vuk</b><div style="color:#9AA3B2">35 • Kragujevac</div><div>"Nije terapija, ali odličan dnevni alat."</div></div>
+        <div class="tcard"><b>Mila</b><div style="color:#9AA3B2">28 • Beograd</div><div>“Check-in me drži u ritmu. 5 min i osećam pomak.”</div></div>
+        <div class="tcard"><b>Nikola</b><div style="color:#9AA3B2">31 • Novi Sad</div><div>“Sve je na srpskom i u mom fazonu.”</div></div>
+        <div class="tcard"><b>Sara</b><div style="color:#9AA3B2">24 • Niš</div><div>“Grafovi jasno pokažu kad padam i zašto.”</div></div>
+        <div class="tcard"><b>Vuk</b><div style="color:#9AA3B2">35 • Kragujevac</div><div>“Nije terapija, ali odličan dnevni alat.”</div></div>
       </div>
       <div class="tnav"><div class="tbtn" id="prev">◀</div><div class="tbtn" id="next">▶</div></div>
     </div>
@@ -822,7 +770,7 @@ LANDING = """
           <div class="li"><div class="bullet"></div><div>Kompletne funkcije 14 dana</div></div>
           <div class="li"><div class="bullet"></div><div>Dnevni check-in i analitika</div></div>
           <div class="li"><div class="bullet"></div><div>AI chat (srpski)</div></div>
-          <div class="price-btn primary" onclick="navigateToHome()">Započni besplatno</div>
+          <a class="price-btn primary" href="?home">Započni besplatno</a>
         </div>
         <!-- Pro -->
         <div class="price-card">
@@ -832,7 +780,7 @@ LANDING = """
           <div class="li"><div class="bullet"></div><div>Neograničen chat & check-in</div></div>
           <div class="li"><div class="bullet"></div><div>Napredna analitika & ciljevi</div></div>
           <div class="li"><div class="bullet"></div><div>Prioritetna podrška</div></div>
-          <div class="price-btn ghost" onclick="navigateToHome()">Kreni sa Pro planom</div>
+          <a class="price-btn ghost" href="?home">Kreni sa Pro planom</a>
         </div>
       </div>
     </div>
@@ -842,20 +790,13 @@ LANDING = """
 <!-- CTA -->
 <section class="section tight">
   <div class="container reveal" style="text-align:center">
-    <div class="btn btn-primary" onclick="navigateToHome()">Kreni besplatno</div>
+    <a class="btn btn-primary" href="?home">Kreni besplatno</a>
   </div>
 </section>
 
 <div class="footer">© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>
 
 <script>
-function navigateToHome() {
-  window.parent.postMessage({
-    type: 'streamlit:setQueryParams',
-    queryParams: {home: ''}
-  }, '*');
-}
-
 // Reveal
 const ob=new IntersectionObserver(es=>es.forEach(x=>x.isIntersecting&&x.target.classList.add('v')),{threshold:.2});
 document.querySelectorAll('.reveal').forEach(el=>ob.observe(el));
@@ -918,224 +859,98 @@ def render_landing():
             .replace("__X_LABELS__", json.dumps(labels))
             .replace("__P_SERIES__", json.dumps(prod))
             .replace("__M_SERIES__", json.dumps(mood)))
-    st_html(html, height=3000)
+    st_html(html, height=5200, width=1280, scrolling=True)
 
-# ---------- HOME ----------
+# ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
-    uid = get_or_create_uid()
-    st.markdown("### 🏠 Početna")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.markdown("**Dobrodošao u MindMate!**")
-        st.markdown("Ovde možeš da:")
-        st.markdown("- Radiš dnevni **check-in** (2 pitanja)")
-        st.markdown("- Razgovaraš sa **AI asistentom**")
-        st.markdown("- Pratiš svoj napredak kroz **analitiku**")
-        
-        if st.button("🎯 Kreni sa check-in", type="primary"):
-            goto("checkin")
-        
-        if st.button("💬 Otvori chat"):
-            goto("chat")
-    
-    with col2:
-        st.markdown("**Brze statistike:**")
-        db = _get_db()
-        user_checkins = [r for r in db["checkins"] if r.get("uid") == uid]
-        user_chats = [r for r in db["chat_events"] if r.get("uid") == uid and r.get("role") == "user"]
-        
-        st.metric("Ukupno check-in-ova", len(user_checkins))
-        st.metric("Chat poruka", len(user_chats))
-        
-        if user_checkins:
-            last_checkin = max(user_checkins, key=lambda x: x.get("ts", ""))
-            last_date = last_checkin.get("date", "Nepoznato")
-            st.info(f"Poslednji check-in: {last_date}")
+    st.markdown("### Tvoja kontrolna tabla")
+    c1,c2,c3=st.columns(3)
+    with c1:
+        st.write("**Chat** — AI na srpskom, praktičan i podržavajući.")
+        if st.button("Otvori chat →", use_container_width=True): goto("chat")
+    with c2:
+        st.write("**Check-in** — 2 pitanja + mikro-ciljevi i streak.")
+        if st.button("Idi na check-in →", use_container_width=True): goto("checkin")
+    with c3:
+        st.write("**Analitika** — trendovi i talasne linije napretka.")
+        if st.button("Vidi trendove →", use_container_width=True): goto("analytics")
 
-# ---------- CHAT ----------
+def chat_reply(sys, log):
+    msgs=[{"role":"system","content":sys}] + [{"role":r,"content":m} for r,m in log]
+    return chat_openai(msgs) if CHAT_PROVIDER=="openai" else chat_ollama(msgs)
+
 def render_chat():
-    uid = get_or_create_uid()
-    st.markdown("### 💬 Chat sa AI asistentom")
-    
-    # Chat history
-    if st.session_state.chat_log:
-        for msg in st.session_state.chat_log:
-            role = msg["role"]
-            content = msg["content"]
-            if role == "user":
-                st.markdown(f"**Ti:** {content}")
-            else:
-                st.markdown(f"**MindMate:** {content}")
-    
-    # Input
-    user_input = st.text_area("Napiši poruku...", key="chat_input", height=100)
-    
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        if st.button("Pošalji", type="primary"):
-            if user_input.strip():
-                # Add user message
-                st.session_state.chat_log.append({"role": "user", "content": user_input})
-                save_chat_event(uid, "user", user_input)
-                
-                # Prepare messages for API
-                messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-                for msg in st.session_state.chat_log[-10:]:  # Last 10 messages
-                    messages.append({"role": msg["role"], "content": msg["content"]})
-                
-                # Get AI response
-                if CHAT_PROVIDER == "openai":
-                    response = chat_openai(messages)
-                else:
-                    response = chat_ollama(messages)
-                
-                # Add AI response
-                st.session_state.chat_log.append({"role": "assistant", "content": response})
-                save_chat_event(uid, "assistant", response)
-                
-                safe_rerun()
-    
-    with col2:
-        if st.button("Obriši istoriju"):
-            st.session_state.chat_log = []
-            safe_rerun()
+    st.subheader("💬 Chat")
+    st.caption(f"Backend: {CHAT_PROVIDER.upper()} | Model: {OLLAMA_MODEL if CHAT_PROVIDER=='ollama' else OPENAI_MODEL}")
+    uid=get_or_create_uid()
+    for role,msg in st.session_state.chat_log:
+        with st.chat_message(role): st.markdown(msg)
+    user=st.chat_input("Upiši poruku…")
+    if user:
+        st.session_state.chat_log.append(("user",user)); save_chat_event(uid,"user",user)
+        with st.chat_message("assistant"):
+            reply=chat_reply(SYSTEM_PROMPT, st.session_state.chat_log)
+            st.markdown(reply); st.session_state.chat_log.append(("assistant",reply)); save_chat_event(uid,"assistant",reply)
 
-# ---------- CHECK-IN ----------
 def render_checkin():
-    uid = get_or_create_uid()
-    st.markdown("### 🎯 Dnevni Check-in")
-    st.markdown("Odgovori na 4 kratka pitanja (PHQ-2 + GAD-2 format):")
-    
-    with st.form("checkin_form"):
-        st.markdown("**Koliko često te muče sledeći problemi?**")
-        
-        phq1 = st.selectbox(
-            "1. Malo interesovanja ili zadovoljstva u aktivnostima",
-            options=[0, 1, 2, 3],
-            format_func=lambda x: ["Uopšte ne", "Nekoliko dana", "Više od pola dana", "Skoro svaki dan"][x]
-        )
-        
-        phq2 = st.selectbox(
-            "2. Osećanje potištenosti, depresije ili beznađa",
-            options=[0, 1, 2, 3],
-            format_func=lambda x: ["Uopšte ne", "Nekoliko dana", "Više od pola dana", "Skoro svaki dan"][x]
-        )
-        
-        gad1 = st.selectbox(
-            "3. Osećanje nervozе, anksioznosti ili napetosti",
-            options=[0, 1, 2, 3],
-            format_func=lambda x: ["Uopšte ne", "Nekoliko dana", "Više od pola dana", "Skoro svaki dan"][x]
-        )
-        
-        gad2 = st.selectbox(
-            "4. Nemogućnost kontrole ili prestanka brige",
-            options=[0, 1, 2, 3],
-            format_func=lambda x: ["Uopšte ne", "Nekoliko dana", "Više od pola dana", "Skoro svaki dan"][x]
-        )
-        
-        notes = st.text_area("Dodatne beleške (opciono):", height=80)
-        
-        if st.form_submit_button("Sačuvaj check-in", type="primary"):
-            save_checkin(uid, phq1, phq2, gad1, gad2, notes)
-            st.success("✅ Check-in je sačuvan!")
-            
-            total_score = phq1 + phq2 + gad1 + gad2
-            if total_score <= 2:
-                st.info("🌟 Odličo! Nastavi ovako.")
-            elif total_score <= 5:
-                st.warning("⚠️ Obrati pažnju na svoje stanje. Možda bi pomogao razgovor sa nekim.")
-            else:
-                st.error("🚨 Ako se osećaš loše, potraži pomoć. Za hitne slučajeve pozovi 112.")
+    st.subheader("🗓️ Daily Check-in"); st.caption("PHQ-2/GAD-2 inspirisano, nije dijagnoza.")
+    c1,c2=st.columns(2)
+    with c1:
+        phq1=st.slider("Gubitak interesovanja / zadovoljstva",0,3,0)
+        phq2=st.slider("Potištenost / tuga / beznađe",0,3,0)
+    with c2:
+        gad1=st.slider("Nervoza / anksioznost / napetost",0,3,0)
+        gad2=st.slider("Teško prestajem da brinem",0,3,0)
+    notes=st.text_area("Napomene (opciono)")
+    if st.button("Sačuvaj današnji check-in", use_container_width=True):
+        save_checkin(get_or_create_uid(), phq1,phq2,gad1,gad2, notes); st.success("✅ Zabeleženo!")
 
-# ---------- ANALYTICS ----------
 def render_analytics():
-    uid = get_or_create_uid()
-    st.markdown("### 📊 Analitika napretka")
-    
-    db = _get_db()
-    user_checkins = [r for r in db["checkins"] if r.get("uid") == uid]
-    
-    if not user_checkins:
-        st.info("Nema podataka za prikaz. Uradi prvi check-in!")
+    st.subheader("📈 Analitika")
+    rows=sorted(_get_db()["checkins"], key=lambda r:r.get("date",""))
+    if not rows:
+        st.info("Još nema podataka. Uradi prvi check-in.")
         return
-    
-    # Sort by date
-    user_checkins.sort(key=lambda x: x.get("date", ""))
-    
-    # Create DataFrame
-    df_data = []
-    for checkin in user_checkins:
-        date = checkin.get("date", "")
-        phq_total = int(checkin.get("phq1", 0)) + int(checkin.get("phq2", 0))
-        gad_total = int(checkin.get("gad1", 0)) + int(checkin.get("gad2", 0))
-        total_score = phq_total + gad_total
-        mood_score = max(0, 100 - total_score * 8)  # Convert to 0-100 scale
-        
-        df_data.append({
-            "Datum": date,
-            "PHQ-2 (Depresija)": phq_total,
-            "GAD-2 (Anksioznost)": gad_total,
-            "Ukupno": total_score,
-            "Raspoloženje (%)": mood_score
-        })
-    
-    df = pd.DataFrame(df_data)
-    
-    # Display metrics
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        avg_mood = df["Raspoloženje (%)"].mean()
-        st.metric("Prosečno raspoloženje", f"{avg_mood:.1f}%")
-    
-    with col2:
-        trend = "📈" if len(df) > 1 and df["Raspoloženje (%)"].iloc[-1] > df["Raspoloženje (%)"].iloc[0] else "📉"
-        st.metric("Trend", trend)
-    
-    with col3:
-        st.metric("Ukupno check-in-ova", len(user_checkins))
-    
-    # Charts
-    if len(df) > 1:
-        st.markdown("#### Trend raspoloženja")
-        fig_line = px.line(df, x="Datum", y="Raspoloženje (%)", 
-                          title="Raspoloženje kroz vreme",
-                          color_discrete_sequence=["#7C5CFF"])
-        fig_line.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font_color="white"
-        )
-        st.plotly_chart(fig_line, use_container_width=True)
-        
-        st.markdown("#### Poređenje faktora")
-        fig_bar = px.bar(df, x="Datum", y=["PHQ-2 (Depresija)", "GAD-2 (Anksioznost)"],
-                        title="PHQ-2 vs GAD-2 skorovi",
-                        color_discrete_sequence=["#7C5CFF", "#4EA3FF"])
-        fig_bar.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font_color="white"
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-    # Raw data
-    with st.expander("Prikaži sirove podatke"):
-        st.dataframe(df)
 
-# ---------- MAIN ROUTER ----------
-if st.session_state.page == "landing":
-    render_landing()
-elif st.session_state.page == "home":
-    render_home()
-elif st.session_state.page == "chat":
-    render_chat()
-elif st.session_state.page == "checkin":
-    render_checkin()
-elif st.session_state.page == "analytics":
-    render_analytics()
-else:
-    render_landing()
+    df = pd.DataFrame(rows)
+    df["total"] = df[["phq1","phq2","gad1","gad2"]].sum(axis=1)
+    df["date"]  = pd.to_datetime(df["date"], errors="coerce")
+    df.sort_values("date", inplace=True)
+
+    fig1 = px.line(df, x="date", y="total", markers=True, title="Ukupan skor (PHQ2+GAD2) kroz vreme")
+    fig1.update_layout(paper_bgcolor="#0B0D12", plot_bgcolor="#11141C", font_color="#E8EAEE",
+                       xaxis_title="Datum", yaxis_title="Skor (0–12)",
+                       margin=dict(l=10,r=10,t=50,b=10))
+    st.plotly_chart(fig1, use_container_width=True)
+
+    mood = (95 - df["total"]*4).clip(40, 100)
+    prod = (92 - df["total"]*3 + (df.index%3==0)*2).clip(35, 100)
+    fig2 = go.Figure()
+    fig2.add_trace(go.Scatter(x=df["date"], y=prod, mode="lines+markers", name="Produktivnost"))
+    fig2.add_trace(go.Scatter(x=df["date"], y=mood, mode="lines+markers", name="Raspoloženje"))
+    fig2.update_layout(title="Raspoloženje & Produktivnost",
+                       paper_bgcolor="#0B0D12", plot_bgcolor="#11141C", font_color="#E8EAEE",
+                       xaxis_title="Datum", yaxis_title="Skor (0–100)",
+                       margin=dict(l=10,r=10,t=50,b=10))
+    st.plotly_chart(fig2, use_container_width=True)
+
+    try:
+        hh = pd.to_datetime(df["ts"], errors="coerce").dt.hour.dropna()
+        if not hh.empty:
+            fig3 = px.histogram(hh, nbins=24, title="Vreme dana kada radiš check-in")
+            fig3.update_layout(paper_bgcolor="#0B0D12", plot_bgcolor="#11141C", font_color="#E8EAEE",
+                               xaxis_title="Sat u danu", yaxis_title="Broj check-in-a",
+                               margin=dict(l=10,r=10,t=50,b=10))
+            st.plotly_chart(fig3, use_container_width=True)
+    except Exception:
+        pass
+
+# ---------- Router ----------
+page=st.session_state.page
+if page=="landing": render_landing()
+elif page=="home": render_home()
+elif page=="chat": render_chat()
+elif page=="checkin": render_checkin()
+elif page=="analytics": render_analytics()
+
+st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:16px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
