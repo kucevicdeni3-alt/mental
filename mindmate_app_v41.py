@@ -334,16 +334,13 @@ mm-toggle span:nth-child(3){{ top:25px; }}
     indicator.style.transform = `translateX(${r.left - rw.left}px)`;
   }}
   moveIndicator(active);
-  links.forEach(a=>{{
-    a.addEventListener('mouseenter', ()=> moveIndicator(a));
-    a.addEventListener('focus', ()=> moveIndicator(a));
-    a.addEventListener('click', ()=>{
-      html_code = """
-<script>
-links.forEach(l=>l.classList.remove('is-active'));
+  <script>
+// JavaScript for navigation highlight fix
+links.forEach(l => l.classList.remove('is-active'));
 </script>
-"""
 
+    });
+  }});
   linksWrap.addEventListener('mouseleave', ()=> moveIndicator(document.querySelector('.mm-link.is-active')));
   function setMenu(open){{
     menu.classList.toggle('open', open);
