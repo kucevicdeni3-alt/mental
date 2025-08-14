@@ -1,17 +1,9 @@
-# app.py — MindMate premium landing
-# - Hero hook + Flower Mira
-# - Vidljiva "planeta" (glow orb) iza VSL-a (smanjen)
-# - "Trusted by" ispod hero dela (puni prazan prostor)
-# - Sporije reveal animacije, hover scale-up fix
-# - Dinamična pozadina (3 band-a menjaju ton dok skroluješ)
-# - Features, Comparison, Integrations, Testimonials, FAQ
-# - Početna/Chat/Check-in/Analitika (Plotly)
+# app.py — MindMate landing + BIG FAQ + PRICING (Free/Pro) + Početna/Chat/Check-in/Analitika
 
 import os, json, requests, math
 import streamlit as st
 from datetime import datetime, date, timedelta
 from streamlit.components.v1 import html as st_html
-
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -34,16 +26,21 @@ st.set_page_config(page_title=APP_TITLE, page_icon="🧠", layout="wide")
 # ---------- Global okvir ----------
 st.markdown("""
 <style>
-.main .block-container{
-  padding-top:.6rem!important; padding-left:3rem!important; padding-right:3rem!important;
-  max-width:1440px!important; margin-inline:auto!important;
+:root{
+  --bg:#0B0D12; --panel:#10141B; --ink:#E8EAEE; --mut:#9AA3B2;
+  --g1:#7C5CFF; --g2:#4EA3FF; --ring:rgba(255,255,255,.10);
 }
-@media (max-width:1100px){ .main .block-container{padding-left:2rem!important;padding-right:2rem!important} }
-@media (max-width:768px){ .main .block-container{padding-left:1rem!important;padding-right:1rem!important} }
-
+html,body{background:var(--bg); color:var(--ink)}
+.main .block-container{
+  padding-top:.6rem!important; padding-left:2rem!important; padding-right:2rem!important;
+  max-width:1280px!important; margin-inline:auto!important;
+}
+@media (max-width:900px){
+  .main .block-container{padding-left:1.2rem!important; padding-right:1.2rem!important}
+}
 .element-container > div:has(> iframe){display:flex; justify-content:center;}
 .stButton>button[kind="primary"]{
-  background:linear-gradient(90deg,#7C5CFF,#4EA3FF)!important;color:#0B0D12!important;
+  background:linear-gradient(90deg,var(--g1),var(--g2))!important;color:#0B0D12!important;
   font-weight:800!important;border:none!important
 }
 </style>
@@ -114,18 +111,15 @@ def compute_metrics():
     cutoff = datetime.utcnow()-timedelta(days=30)
     recent = []
     for r in db["checkins"]:
-        try: dt = datetime.fromisoformat(r.get("ts",""))
+        try: dt = datetime.fromisoformat(r.get("ts","").split("+")[0])
         except Exception: dt = datetime.utcnow()
         if dt>=cutoff: recent.append(r)
     if recent:
         good=sum(1 for r in recent if (int(r.get("phq1",0))+int(r.get("phq2",0))+int(r.get("gad1",0))+int(r.get("gad2",0)))<=3)
         sat = int(round(100*good/len(recent)))
     else: sat=92
-    avg_minutes = max(4, min(11, 4 + sessions//12))
-    streaks     = max(1, min(14, len(recent)//3))
-    retention   = min(99, 60 + (len(recent)//5))
-    nps         = min(90, 60 + (sat//2))
-    return users, sessions, sat, avg_minutes, streaks, retention, nps
+    retention = min(99, 60 + len(recent)//5)
+    return users, sessions, sat, retention
 
 def compute_trend_series():
     db = _get_db()
@@ -161,20 +155,11 @@ def chat_ollama(messages):
             r = requests.post(f"{OLLAMA_HOST}/api/generate",
                               json={"model":OLLAMA_MODEL,"prompt":prompt,"stream":False}, timeout=120)
         r.raise_for_status()
-        ct=(r.headers.get("Content-Type") or "").lower()
-        if "ndjson" in ct or "\n" in r.text.strip():
-            out=""
-            for line in r.text.strip().splitlines():
-                line=line.strip()
-                if not line: continue
-                try:
-                    data=json.loads(line)
-                    out += (data.get("message",{}) or {}).get("content") or data.get("response") or ""
-                except Exception:
-                    pass
-            if out: return out
-        data=r.json()
-        return (data.get("message",{}) or {}).get("content") or data.get("response") or ""
+        try:
+            data=r.json()
+            return (data.get("message",{}) or {}).get("content") or data.get("response") or ""
+        except Exception:
+            return r.text
     except Exception as e:
         return f"[Greška Ollama: {e}]"
 
@@ -201,20 +186,20 @@ if "page" not in st.session_state: st.session_state.page="landing"
 if "chat_log" not in st.session_state: st.session_state.chat_log=[]
 def goto(p): st.session_state.page=p; safe_rerun()
 
-# ---------- NAVBAR ----------
+# ---------- NAV ----------
 st.markdown("""
 <style>
-.mm-navwrap{position:sticky;top:0;z-index:9;background:rgba(17,20,28,.55);backdrop-filter:blur(12px);
-             border-bottom:1px solid rgba(255,255,255,.06)}
-.mm-nav{width:min(1320px,96vw);margin:0 auto;padding:10px 6px;display:flex;align-items:center;justify-content:space-between}
+.mm-navwrap{position:sticky;top:0;z-index:9;background:rgba(17,20,28,.65);backdrop-filter:blur(10px);
+             border-bottom:1px solid var(--ring)}
+.mm-nav{max-width:1180px;margin:0 auto;padding:10px 6px;display:flex;align-items:center;justify-content:space-between}
 .mm-brand{display:flex;align-items:center;gap:10px;font-weight:900;color:#E8EAEE}
-.mm-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,#7C5CFF,#4EA3FF);
+.mm-dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));
         box-shadow:0 0 12px rgba(124,92,255,.7)}
-.mm-links{display:flex;gap:10px;flex-wrap:wrap}
-.mm-links a{text-decoration:none;color:#E8EAEE;font-weight:700;padding:8px 12px;border:1px solid rgba(255,255,255,.08);
+.mm-links{display:flex;gap:8px;flex-wrap:wrap}
+.mm-links a{text-decoration:none;color:#E8EAEE;font-weight:700;padding:8px 11px;border:1px solid var(--ring);
             border-radius:12px;background:rgba(255,255,255,.02);transition:transform .18s ease}
-.mm-links a:hover{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.02)}
-@media (max-width: 640px){ .mm-links a{padding:6px 10px} }
+.mm-links a:hover{border-color:rgba(255,255,255,.18); transform:translateY(-1px) scale(1.03)}
+@media (max-width:720px){ .mm-links a{padding:6px 9px} }
 </style>
 <div class="mm-navwrap"><div class="mm-nav">
   <div class="mm-brand"><div class="mm-dot"></div><div>MindMate</div></div>
@@ -232,451 +217,424 @@ elif "chat"     in qp: st.session_state.page="chat"
 elif "checkin"  in qp: st.session_state.page="checkin"
 elif "analytics"in qp: st.session_state.page="analytics"
 
-# ---------- LANDING (sa Trusted by, sporije animacije, dinamična pozadina) ----------
-LANDING_TEMPLATE = """
+# ---------- LANDING (sa PRICING ispod FAQ) ----------
+LANDING = """
 <!DOCTYPE html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <style>
 :root{
-  --bg:#0B0D12; --panel:#11141C; --text:#E8EAEE; --mute:#9AA3B2;
-  --g1:#7C5CFF; --g2:#4EA3FF; --g3:#9AD6FF;
-  --fog1:rgba(124,92,255,.28); --fog2:rgba(78,163,255,.22);
-  --ring:rgba(255,255,255,.10);
+  --bg:#0B0D12; --ink:#E8EAEE; --mut:#9AA3B2; --ring:rgba(255,255,255,.10);
+  --g1:#7C5CFF; --g2:#4EA3FF; --MAX:1180px;
+  --s-xl:64px; --s-lg:48px; --s-md:32px; --s-sm:20px;
 }
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
-  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; overflow-x:hidden}
+*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:hidden}
+.container{width:min(var(--MAX),92vw);margin:0 auto}
+.section{padding-block:var(--s-lg)} .section.tight{padding-block:var(--s-md)}
+.h2{font-size:clamp(22px,2.6vw,30px);margin:0 0 12px 0}
+.grid-12{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+.card{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px;transition:transform .2s ease, box-shadow .2s ease}
+.card:hover{transform:translateY(-2px) scale(1.03); box-shadow:0 14px 48px rgba(0,0,0,.35)}
+.btn{display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;border:1px solid var(--ring);text-decoration:none;transition:transform .2s ease}
+.btn:hover{transform:translateY(-1px) scale(1.03)}
+.btn-primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
+.btn-ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
 
-/* BG base */
-.bg-wrap{position:fixed;inset:0;z-index:0;background:
-  radial-gradient(1400px 800px at 18% -10%, rgba(124,92,255,.22), transparent 60%),
-  radial-gradient(1400px 800px at 82% 110%, rgba(78,163,255,.18), transparent 60%), var(--bg);}
-.bg-noise{position:fixed;inset:-20%;z-index:1;pointer-events:none;opacity:.08;background-image:url('data:image/svg+xml;utf8,\
-<svg xmlns=\\"http://www.w3.org/2000/svg\\" width=\\"1200\\" height=\\"1200\\"><filter id=\\"n\\"><feTurbulence type=\\"fractalNoise\\" baseFrequency=\\".9\\" numOctaves=\\"2\\" stitchTiles=\\"stitch\\"/></filter><rect width=\\"100%\\" height=\\"100%\\" filter=\\"url(%23n)\\" opacity=\\".55\\"/></svg>');}
+/* Hero */
+.hero{padding-top:var(--s-lg);padding-bottom:var(--s-lg)}
+.hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center}
+.h-eyebrow{display:inline-block;padding:7px 11px;border-radius:999px;border:1px solid var(--ring);font-size:12px;color:#C7CEDA;background:rgba(255,255,255,.05);margin-bottom:8px}
+.h-title{font-size:clamp(28px,4.6vw,56px);line-height:1.06;margin:0 0 8px}
+.h-sub{color:var(--mut);margin:0 0 10px}
+.cta{display:flex;gap:10px;flex-wrap:wrap}
 
-/* 3 band sloja (menja ton dok skroluješ) */
-.bg-band{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0;transition:opacity 1.6s ease}
-.bg-band.band1{background:radial-gradient(1200px 760px at 70% 30%, rgba(124,92,255,.22), transparent 60%)}
-.bg-band.band2{background:radial-gradient(1200px 760px at 30% 70%, rgba(78,163,255,.22), transparent 60%)}
-.bg-band.band3{background:radial-gradient(1200px 760px at 50% 50%, rgba(154,214,255,.20), transparent 60%)}
-.bg-band.show{opacity:1}
+.mira{display:flex;justify-content:center}
+#flower{width:min(380px,68vw);filter:drop-shadow(0 14px 42px rgba(124,92,255,.35))}
+#flower .p{transform-origin:50% 50%;animation:sway 6.6s ease-in-out infinite}
+#flower .c{animation:pulse 6s ease-in-out infinite}
+@keyframes sway{ 0%{transform:rotate(0)} 50%{transform:rotate(2.2deg)} 100%{transform:rotate(0)}}
+@keyframes pulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
 
-.fog{position:fixed;inset:-10vh -10vw;z-index:3;pointer-events:none;filter:blur(48px) saturate(1.06);opacity:.35}
-.fog.f1{background:radial-gradient(800px 520px at 14% 16%, var(--fog1), transparent 60%)} .fog.f2{background:radial-gradient(900px 600px at 86% 18%, var(--fog2), transparent 60%)} .fog.f3{background:radial-gradient(1000px 700px at 50% 80%, var(--fog1), transparent 60%)}
-.petals{position:fixed;inset:0;z-index:4;pointer-events:none;overflow:hidden}
-
-.section{width:min(1320px,95vw);margin:0 auto;padding:52px 0;position:relative;z-index:5}
-.reveal{opacity:0;transform:translateY(22px);transition:opacity 1.6s ease, transform 1.6s ease}
-.reveal.visible{opacity:1;transform:translateY(0)}
-
-/* HERO */
-.hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:32px;align-items:center;min-height:62vh}
-.hook{display:flex;flex-direction:column;gap:14px}
-.hook-eyebrow{display:inline-block;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--ring);font-size:12px;color:#C7CEDA}
-.hook-title{font-size:clamp(30px,4.8vw,64px);line-height:1.04;margin:0}
-.hook-sub{color:#9AA3B2;font-size:clamp(14px,2vw,18px);margin:0}
-.hook-cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
-.btn{position:relative;overflow:hidden;display:inline-block;padding:14px 18px;border-radius:14px;font-weight:800;text-decoration:none;border:1px solid var(--ring);cursor:pointer; transition:transform .25s ease}
-.btn:hover{transform:translateY(-1px) scale(1.04)}
-.btn-primary{color:#0B0D12;background:linear-gradient(90deg,#7C5CFF,#4EA3FF)} .btn-ghost{color:#E8EAEE;background:rgba(255,255,255,.06)}
-
-.mira-wrap{position:relative;display:flex;justify-content:center}
-#flowerMira{width:min(420px,70vw);display:block;filter:drop-shadow(0 18px 48px rgba(124,92,255,.35))}
-#flowerMira .petal{transform-origin:50% 50%;animation:petalSway 6.6s ease-in-out infinite}
-#flowerMira .centerPulse{animation:centerPulse 6s ease-in-out infinite}
-@keyframes petalSway{ 0%{transform:rotate(0)} 50%{transform:rotate(2deg)} 100%{transform:rotate(0)}}
-@keyframes centerPulse{ 0%,100%{opacity:.85} 50%{opacity:1}}
-@media (max-width:980px){ .hero-grid{grid-template-columns:1fr} .mira-wrap{order:-1} }
-
-/* VSL + planeta */
-.vsl-area{position:relative;margin-top:8px}
-.orb-wrap{position:relative;height:160px}
+/* VSL + orb */
+.vsl-area{position:relative}
+.orb-wrap{position:relative;height:90px}
 .orb{
-  position:absolute; inset:-240px 0 0 0; margin:auto;
-  width:min(1100px,92vw); height:min(1100px,92vw);
+  position:absolute; inset:-180px 0 0 0; margin:auto; z-index:0;
+  width:min(980px,90vw); height:min(980px,90vw);
   background:
-    radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.65), transparent 62%),
-    radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.58), transparent 66%),
-    radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.26), transparent 70%);
-  filter: blur(34px) saturate(1.06);
-  opacity:.9; transform:translateZ(0); z-index:0;
+    radial-gradient(60% 55% at 50% 40%, rgba(124,92,255,.55), transparent 62%),
+    radial-gradient(58% 52% at 50% 45%, rgba(78,163,255,.50), transparent 66%),
+    radial-gradient(46% 40% at 50% 52%, rgba(154,214,255,.22), transparent 70%);
+  filter: blur(28px) saturate(1.05); opacity:.9; animation:orbBreath 12s ease-in-out infinite;
 }
-.orb:after{
-  content:""; position:absolute; inset:0; border-radius:50%;
-  background: conic-gradient(from 210deg at 50% 50%, rgba(124,92,255,0), rgba(124,92,255,.45) 18%, rgba(78,163,255,.45) 55%, rgba(124,92,255,0) 80%);
-  filter:blur(18px); opacity:.95; pointer-events:none;
-}
-.vsl-shell{
-  max-width:1100px;margin:0 auto 10px;padding:10px;background:rgba(255,255,255,.05);
-  border:1px solid var(--ring);border-radius:18px;box-shadow:0 32px 90px rgba(0,0,0,.65);
-  position:relative; z-index:1; transition:transform .25s ease, box-shadow .25s ease
-}
-.vsl-shell:hover{transform:translateY(-2px) scale(1.01); box-shadow:0 36px 110px rgba(0,0,0,.7)}
-.vsl-iframe{width:100%;aspect-ratio:16/7;height:auto;min-height:320px;border:0;border-radius:12px;background:#000}
-@media (max-width:920px){ .orb{inset:-180px 0 0 0} .vsl-iframe{min-height:220px;aspect-ratio:16/9} }
+@keyframes orbBreath{0%,100%{transform:scale(1)} 50%{transform:scale(1.04)}}
+.vsl{position:relative;z-index:1;max-width:980px;margin:0 auto;border-radius:16px;border:1px solid var(--ring);padding:10px;background:rgba(255,255,255,.05);box-shadow:0 28px 90px rgba(0,0,0,.65)}
+.vsl iframe{width:100%;aspect-ratio:16/9;height:auto;min-height:240px;border:0;border-radius:10px}
 
-/* TRUSTED BY (puni prazan prostor) */
-.trusted{display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center;margin-top:8px}
-.logo-row{display:flex;gap:22px;flex-wrap:wrap;justify-content:center}
-.logo{width:120px;height:48px;border-radius:12px;border:1px solid var(--ring);background:rgba(255,255,255,.04);
-      display:flex;align-items:center;justify-content:center;color:#C7CEDA;font-weight:800;letter-spacing:.5px;
-      transition:transform .25s ease, opacity .25s ease}
-.logo:hover{transform:translateY(-2px) scale(1.04); opacity:.95}
+/* Trusted by */
+.trusted{display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px}
+.logos{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.logo{width:110px;height:42px;border-radius:12px;border:1px solid var(--ring);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;color:#C7CEDA;font-weight:800;letter-spacing:.4px;transition:transform .2s}
+.logo:hover{transform:translateY(-2px)}
 
-/* KPI + cards hover */
-.kpis{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
-.kpi{grid-column:span 3;background:rgba(17,20,28,.72);border:1px solid var(--ring);border-radius:18px;padding:18px;text-align:center; transition:transform .25s ease}
-.kpi:hover{transform:translateY(-2px) scale(1.03)}
-.kpi .num{font-size:clamp(22px,3.2vw,34px);font-weight:900;background:linear-gradient(90deg,#7C5CFF,#4EA3FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.kpi .label{color:#9AA3B2;margin-top:6px}
+/* 3-up features */
+.feat .card{grid-column:span 4}
+@media (max-width:900px){ .hero-grid{grid-template-columns:1fr} .feat .card{grid-column:span 12} }
 
-/* grids */
-.timeline,.features{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
-.ti,.f-card,.comp-card,.int-card,.t-card{background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px; transition:transform .25s ease}
-.ti:hover,.f-card:hover,.comp-card:hover,.int-card:hover,.t-card:hover{transform:translateY(-2px) scale(1.03)}
-.ti{grid-column:span 3}
-.f-card{grid-column:span 4}
-.f-title{font-weight:900;font-size:1.12rem;margin:6px 0}.f-text{color:#C7CEDA;margin:.2rem 0}
-
-/* compare */
+/* Compare */
 .compare{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-@media (max-width:920px){ .compare{grid-template-columns:1fr} }
+@media (max-width:900px){ .compare{grid-template-columns:1fr} }
 
-/* chart wrap */
-.chart-wrap{background:#0F1219;border:1px solid var(--ring);border-radius:18px;padding:18px;box-shadow:0 14px 36px rgba(0,0,0,.28)}
-.legend{display:flex;gap:14px;align-items:center;color:#C7CEDA;margin-bottom:8px}.dot{width:12px;height:12px;border-radius:50%}
+/* Chart */
+.chart-wrap{background:#0F1219;border:1px solid var(--ring);border-radius:16px;padding:18px}
+.legend{display:flex;gap:12px;align-items:center;color:#C7CEDA;margin-bottom:6px}.dot{width:12px;height:12px;border-radius:50%}
 .dot-prod{background:#7C5CFF}.dot-mood{background:#4EA3FF}
 
-/* testimonials / faq */
-.t-wrap{position:relative;overflow:hidden;border:1px solid var(--ring);background:#0F1219;border-radius:18px;padding:18px}
-.t-rail{display:flex;gap:18px;transition:transform .5s ease}
-.t-card{min-width:calc(33.33% - 12px)}
-.t-nav{position:absolute;top:50%;left:8px;right:8px;display:flex;justify-content:space-between;transform:translateY(-50%)}
-.t-btn{padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer; transition:transform .2s ease}
-.t-btn:hover{transform:scale(1.08)}
+/* KPI */
+.kpis .card{grid-column:span 3;text-align:center}
+.knum{font-size:clamp(22px,3vw,30px);font-weight:900;background:linear-gradient(90deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.kcap{color:var(--mut)}
 
-.integrations{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
-.int-card{grid-column:span 3;text-align:center;color:#C7CEDA}
-@media (max-width:920px){ .int-card{grid-column:span 6} }
+/* Integrations */
+.int .card{grid-column:span 3;text-align:center;color:#C7CEDA}
+@media (max-width:900px){ .int .card{grid-column:span 6} }
 
-.faq{border:1px solid var(--ring);border-radius:18px;background:#0F1219}
-.faq-item{border-top:1px solid rgba(255,255,255,.06)}
-.faq-item:first-child{border-top:none}
-.faq-q{width:100%;text-align:left;background:none;border:none;color:#E8EAEE;font-weight:800;padding:16px;cursor:pointer}
-.faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 16px;transition:max-height .5s ease,padding .5s ease}
+/* Testimonials */
+.twrap{border:1px solid var(--ring);border-radius:16px;padding:16px;background:#0F1219;position:relative;overflow:hidden}
+.trail{display:flex;gap:16px;transition:transform .45s ease}
+.tcard{min-width:calc(33.33% - 10.6px);background:rgba(255,255,255,.04);border:1px solid var(--ring);border-radius:12px;padding:14px}
+.tnav{position:absolute;top:50%;left:8px;right:8px;display:flex;justify-content:space-between;transform:translateY(-50%)}
+.tbtn{padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:transform .18s}
+.tbtn:hover{transform:scale(1.06)}
 
-/* sticky cta */
-.sticky-cta{position:fixed;left:0;right:0;bottom:16px;z-index:50;display:flex;justify-content:center;pointer-events:none;transform:translateY(110%);opacity:0;transition:transform .6s,opacity .6s}
-.sticky-cta.show{transform:translateY(0);opacity:1}
-.sticky-cta .inner{pointer-events:auto;width:min(1100px,92vw);background:rgba(20,24,33,.7);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(14px) saturate(1.05);box-shadow:0 24px 60px rgba(0,0,0,.45);border-radius:18px;padding:16px 18px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
-.sticky-cta .actions{display:flex;gap:10px}.sticky-cta .btn{padding:10px 14px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring)}
+/* ===== BIG FAQ ===== */
+.faq-zone{position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--ring);background:linear-gradient(180deg,#0F1219, #0E131A 55%, #0C1016)}
+.faq-clouds:before, .faq-clouds:after{
+  content:""; position:absolute; inset:auto -20% -40% -20%; height:240px;
+  background:
+    radial-gradient(240px 120px at 20% 60%, rgba(255,255,255,.06), transparent 65%),
+    radial-gradient(200px 100px at 60% 40%, rgba(255,255,255,.05), transparent 60%),
+    radial-gradient(220px 110px at 85% 70%, rgba(255,255,255,.04), transparent 65%);
+  filter:blur(12px); opacity:.7; animation:cloudFloat 26s linear infinite;
+}
+.faq-clouds:after{ inset:auto -25% -45% -25%; animation-duration:32s; opacity:.55 }
+@keyframes cloudFloat{0%{transform:translateX(-6%)} 50%{transform:translateX(6%)} 100%{transform:translateX(-6%)}}
 
-.cursor-flower{position:fixed;top:0;left:0;width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#7C5CFF,#4EA3FF);box-shadow:0 0 12px rgba(124,92,255,.7); pointer-events:none; transform:translate(-50%,-50%) scale(.95);opacity:.28; transition:opacity .15s ease, transform .1s ease}
-.cursor-boost{opacity:1!important; transform:translate(-50%,-50%) scale(1.08)!important;}
+.faq-header{text-align:center; padding:28px 16px 10px}
+.badge{display:inline-flex;gap:6px;align-items:center;color:#C7CEDA;font-size:13px;padding:7px 12px;border:1px solid var(--ring);border-radius:999px;background:rgba(255,255,255,.05)}
+.faq-title{font-size:clamp(26px,4.2vw,44px);margin:8px 0 6px 0}
+.faq-sub{color:#A7B0BE;max-width:860px;margin:0 auto 18px}
+
+.faq{max-width:920px;margin:0 auto 26px;background:transparent;border:0}
+.faq-item{border:1px solid var(--ring);border-radius:14px;background:#0F1219;margin:12px 0;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.25); transition:transform .18s ease, box-shadow .18s ease}
+.faq-item:hover{transform:translateY(-1px); box-shadow:0 14px 36px rgba(0,0,0,.33)}
+.faq-q{width:100%;text-align:left;background:none;border:none;color:#E8EAEE;font-weight:800;padding:18px 18px;cursor:pointer; display:flex; align-items:center; justify-content:space-between}
+.faq-q .txt{pointer-events:none}
+.chev{width:22px;height:22px;border-radius:6px;border:1px solid var(--ring);display:grid;place-items:center;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.chev svg{width:12px;height:12px}
+.faq-a{max-height:0;overflow:hidden;color:#C7CEDA;padding:0 18px;transition:max-height .42s cubic-bezier(.2,.8,.2,1), padding .42s cubic-bezier(.2,.8,.2,1)}
+.faq-a.open{padding:12px 18px 18px}
+.contact-mini{display:flex;align-items:center;justify-content:center;gap:10px;color:#C7CEDA;padding:8px 0 18px}
+
+/* ===== PRICING ===== */
+.pricing .wrap{border:1px solid var(--ring);border-radius:20px;padding:24px;background:#0F1219}
+.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
+.price-card{background:rgba(17,20,28,.9);border:1px solid var(--ring);border-radius:18px;padding:22px;box-shadow:0 16px 44px rgba(0,0,0,.35); transition:transform .18s, box-shadow .18s}
+.price-card:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 22px 60px rgba(0,0,0,.45)}
+.price-title{font-weight:900;margin:0 0 6px 0}
+.price-row{display:flex;align-items:baseline;gap:8px}
+.price-num{font-size:clamp(28px,4vw,36px);font-weight:900}
+.price-unit{color:#9AA3B2;font-weight:700}
+.hr{height:1px;background:rgba(255,255,255,.08);margin:12px 0}
+.li{display:flex;gap:10px;align-items:flex-start;color:#C7CEDA;margin:8px 0}
+.bullet{width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,var(--g1),var(--g2));margin-top:8px}
+.price-btn{margin-top:14px;display:inline-block;padding:12px 16px;border-radius:12px;font-weight:800;text-decoration:none;border:1px solid var(--ring)}
+.price-btn.primary{background:linear-gradient(90deg,var(--g1),var(--g2));color:#0B0D12}
+.price-btn.ghost{background:rgba(255,255,255,.06);color:#E8EAEE}
+@media (max-width:900px){ .price-grid{grid-template-columns:1fr} }
+
+/* Reveal */
+.reveal{opacity:0;transform:translateY(20px);transition:opacity 1.2s ease, transform 1.2s ease}
+.reveal.v{opacity:1;transform:translateY(0)}
+
+.footer{color:#9AA3B2;text-align:center;padding:16px 0 22px}
+@media (max-width:900px){ .hero-grid{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
-<div class="cursor-flower" id="cursorFlower"></div>
-<div class="bg-wrap"></div><div class="bg-noise"></div>
-<div class="bg-band band1 show" id="band1"></div>
-<div class="bg-band band2" id="band2"></div>
-<div class="bg-band band3" id="band3"></div>
-<div class="fog f1" id="fog1"></div><div class="fog f2" id="fog2"></div><div class="fog f3" id="fog3"></div>
-<svg class="petals" id="petals" xmlns="http://www.w3.org/2000/svg"></svg>
 
 <!-- HERO -->
-<section class="section reveal band" data-band="1">
-  <div class="hero-grid">
-    <div class="hook">
-      <div class="hook-eyebrow">MindMate • Mentalni wellness</div>
-      <h1 class="hook-title">Preusmeri 80% briga u konkretne korake — <br/> za 5 minuta dnevno.</h1>
-      <p class="hook-sub">Kratki check-in, mikro-navike i empatičan razgovor. Jasni trendovi, tvoj ritam.</p>
-      <div class="hook-cta">
-        <a class="btn btn-primary fx-ripple" href="?home">Kreni odmah</a>
-        <a class="btn btn-ghost fx-ripple" href="?home">Pogledaj kako radi</a>
+<section class="section hero">
+  <div class="container hero-grid reveal">
+    <div>
+      <div class="h-eyebrow">MindMate • Mentalni wellness</div>
+      <h1 class="h-title">Preusmeri 80% briga u konkretne korake — za 5 minuta dnevno.</h1>
+      <p class="h-sub">Kratki check-in, mikro-navike i empatičan razgovor. Jasni trendovi, tvoj ritam.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="?home">Kreni odmah</a>
+        <a class="btn btn-ghost" href="?home">Pogledaj kako radi</a>
       </div>
     </div>
-    <div class="mira-wrap">
-      <svg id="flowerMira" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flower Mira">
+    <div class="mira">
+      <svg id="flower" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-label="Flower Mira">
         <defs>
-          <linearGradient id="petalG" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/>
-          </linearGradient>
-          <radialGradient id="coreG" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#FFF7" /><stop offset="100%" stop-color="#7C5CFF" />
-          </radialGradient>
+          <linearGradient id="pG" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
+          <radialGradient id="cG" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#FFF7"/><stop offset="100%" stop-color="#7C5CFF"/></radialGradient>
         </defs>
-        <g class="petal" opacity="0.95">
-          <path d="M100,20 C85,45 85,75 100,95 C115,75 115,45 100,20 Z" fill="url(#petalG)"/>
-          <path d="M55,40 C40,70 52,95 95,105 C78,84 72,60 55,40 Z" fill="url(#petalG)" opacity="0.75"/>
-          <path d="M145,40 C160,70 148,95 105,105 C122,84 128,60 145,40 Z" fill="url(#petalG)" opacity="0.75"/>
-        </g>
-        <circle class="centerPulse" cx="100" cy="110" r="12" fill="url(#coreG)"/>
-        <path d="M88 128 Q100 136 112 128" stroke="#E8EAEE" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>
-        <circle cx="88" cy="122" r="2.8" fill="#E8EAEE" opacity="0.9"/>
-        <circle cx="112" cy="122" r="2.8" fill="#E8EAEE" opacity="0.9"/>
+        <g class="p"><path d="M100,20 C85,45 85,75 100,95 C115,75 115,45 100,20 Z" fill="url(#pG)"/>
+           <path d="M55,40 C40,70 52,95 95,105 C78,84 72,60 55,40 Z" fill="url(#pG)" opacity=".75"/>
+           <path d="M145,40 C160,70 148,95 105,105 C122,84 128,60 145,40 Z" fill="url(#pG)" opacity=".75"/></g>
+        <circle class="c" cx="100" cy="110" r="12" fill="url(#cG)"/>
+        <path d="M88 128 Q100 136 112 128" stroke="#E8EAEE" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/>
+        <circle cx="88" cy="122" r="2.8" fill="#E8EAEE" opacity=".9"/>
+        <circle cx="112" cy="122" r="2.8" fill="#E8EAEE" opacity=".9"/>
       </svg>
     </div>
   </div>
+</section>
 
-  <!-- TRUSTED BY -->
-  <div class="trusted">
-    <div style="opacity:.9">Trusted by people from:</div>
-    <div class="logo-row">
-      <div class="logo">Health+</div>
-      <div class="logo">Calmify</div>
-      <div class="logo">WellLabs</div>
-      <div class="logo">FocusHub</div>
-      <div class="logo">MindBank</div>
+<!-- VSL + planeta + Trusted by -->
+<section class="section tight vsl-area">
+  <div class="container reveal">
+    <div class="orb-wrap"><div class="orb"></div></div>
+    <div class="vsl"><iframe src="https://www.youtube.com/embed/1qK0c9J_h10?rel=0&modestbranding=1" title="MindMate VSL" allowfullscreen></iframe></div>
+    <div class="trusted">
+      <div style="opacity:.9">Trusted by people from:</div>
+      <div class="logos">
+        <div class="logo">Health+</div><div class="logo">Calmify</div><div class="logo">WellLabs</div>
+        <div class="logo">FocusHub</div><div class="logo">MindBank</div>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- VSL + planeta -->
-<section class="section reveal vsl-area band" data-band="2">
-  <div class="orb-wrap"><div class="orb" id="orb"></div></div>
-  <div class="vsl-shell">
-    <iframe class="vsl-iframe" src="https://www.youtube.com/embed/1qK0c9J_h10?rel=0&modestbranding=1"
-            title="MindMate VSL" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-  </div>
-</section>
-
-<!-- KPI blok -->
-<section class="section reveal band" data-band="3">
-  <div class="kpis" id="kpiBlock">
-    <div class="kpi"><div class="num" data-target="__USERS__">0</div><div class="label">Aktivnih korisnika</div></div>
-    <div class="kpi"><div class="num" data-target="__SESS__">0</div><div class="label">Ukupno sesija</div></div>
-    <div class="kpi"><div class="num" data-target="__SAT__">0</div><div class="label">Zadovoljstvo (%)</div></div>
-    <div class="kpi"><div class="num" data-target="__RET__">0</div><div class="label">Mesečna zadržanost (%)</div></div>
-  </div>
-</section>
-
-<!-- Mini demo graf -->
-<section class="section reveal band" data-band="1">
-  <div class="chart-wrap">
-    <div style="font-weight:900;margin:0 0 10px 0">Produktivnost & Raspoloženje (poslednje sesije)</div>
-    <div class="legend"><div class="dot dot-prod"></div><div>Produktivnost</div><div class="dot dot-mood" style="margin-left:12px"></div><div>Raspoloženje</div></div>
-    <svg id="mmChart" viewBox="0 0 1100 360" width="100%" height="360" preserveAspectRatio="xMidYMid meet">
-      <defs>
-        <linearGradient id="gProd" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
-        <linearGradient id="gMood" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#4EA3FF"/><stop offset="100%" stop-color="#7C5CFF"/></linearGradient>
-        <filter id="softGlow"><feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-      </defs>
-      <g id="grid"></g>
-      <path id="prodGlow" fill="none" stroke="#7C5CFF" stroke-opacity=".18" stroke-width="10" stroke-linecap="round" filter="url(#softGlow)"/>
-      <path id="moodGlow" fill="none" stroke="#4EA3FF" stroke-opacity=".18" stroke-width="10" stroke-linecap="round" filter="url(#softGlow)"/>
-      <path id="prodPath" fill="none" stroke="url(#gProd)" stroke-width="3" stroke-linecap="round"/>
-      <path id="moodPath" fill="none" stroke="url(#gMood)" stroke-width="3" stroke-linecap="round"/>
-      <g id="xlabels"></g>
-    </svg>
-  </div>
-</section>
-
-<!-- Kako radi -->
-<section class="section reveal band" data-band="2">
-  <h2 style="margin:0 0 12px 0">Kako radi MindMate?</h2>
-  <div class="timeline">
-    <div class="ti"><h4>1) Kratak check-in</h4><p>2 pitanja + beleška. Potpuno bez “frke”.</p></div>
-    <div class="ti"><h4>2) Mikro-navike</h4><p>5–10 minuta zadaci koji grade momentum.</p></div>
-    <div class="ti"><h4>3) Razgovor</h4><p>Empatičan chat u tvom tonu — motivacija bez pritiska.</p></div>
-    <div class="ti"><h4>4) Trendovi</h4><p>Jasni grafovi: raspoloženje, fokus, obrasci.</p></div>
-  </div>
-</section>
-
-<!-- Naučna osnova -->
-<section class="section reveal band" data-band="3">
-  <h2 style="margin:0 0 12px 0">Zasniva se na nauci</h2>
-  <div class="features">
-    <div class="f-card"><div class="f-title">CBT</div><p class="f-text">Promena obrasca misli kroz male eksperimente.</p></div>
-    <div class="f-card"><div class="f-title">ACT</div><p class="f-text">Prihvatanje, vrednosti i akcije uprkos nelagodi.</p></div>
-    <div class="f-card"><div class="f-title">Mindfulness</div><p class="f-text">Povratak u telo i trenutak; fokus i smirenost.</p></div>
+<!-- Benefiti -->
+<section class="section tight">
+  <div class="container">
+    <h2 class="h2">Zašto početi danas</h2>
+    <div class="grid-12 feat reveal">
+      <div class="card" style="grid-column:span 4"><b>2 pitanja dnevno</b><br><span style="color:#9AA3B2">Brz check-in bez frke; gradi ritam.</span></div>
+      <div class="card" style="grid-column:span 4"><b>Mikro-navike (5–10 min)</b><br><span style="color:#9AA3B2">Male akcije → vidljiv napredak.</span></div>
+      <div class="card" style="grid-column:span 4"><b>Grafovi i obrasci</b><br><span style="color:#9AA3B2">Jasno vidiš raspoloženje i fokus.</span></div>
+    </div>
   </div>
 </section>
 
 <!-- Poređenje -->
-<section class="section reveal band" data-band="1">
-  <h2 style="margin:0 0 12px 0">Zašto MindMate?</h2>
-  <div class="compare">
-    <div class="comp-card">
-      <h3>Bez plana</h3>
-      <div class="li"><div class="dot dot-mood" style="width:8px;height:8px"></div><div>Nasumične navike, bez praćenja.</div></div>
-      <div class="li"><div class="dot dot-mood" style="width:8px;height:8px"></div><div>Preplavljenost, odustajanje posle par dana.</div></div>
-      <div class="li"><div class="dot dot-mood" style="width:8px;height:8px"></div><div>Bez jasnih trendova i povratne informacije.</div></div>
-    </div>
-    <div class="comp-card">
-      <h3>Sa MindMate</h3>
-      <div class="li"><div class="dot dot-prod" style="width:8px;height:8px"></div><div>Check-in od 2 pitanja + mikro-koraci (5–10 min).</div></div>
-      <div class="li"><div class="dot dot-prod" style="width:8px;height:8px"></div><div>Empatičan razgovor u tvom tonu.</div></div>
-      <div class="li"><div class="dot dot-prod" style="width:8px;height:8px"></div><div>Grafovi napretka i jasni obrasci.</div></div>
+<section class="section tight">
+  <div class="container reveal">
+    <h2 class="h2">Bez plana vs. sa MindMate</h2>
+    <div class="compare">
+      <div class="card"><b>Bez plana</b><ul style="color:#9AA3B2;margin:.5rem 0 0 1rem">
+        <li>Nasumične navike, bez praćenja</li><li>Preplavljenost</li><li>Nema jasnih trendova</li></ul></div>
+      <div class="card"><b>Sa MindMate</b><ul style="color:#9AA3B2;margin:.5rem 0 0 1rem">
+        <li>2 pitanja + mikro-koraci</li><li>Empatičan razgovor u tvom tonu</li><li>Grafovi napretka</li></ul></div>
     </div>
   </div>
 </section>
 
-<!-- Integracije / Trust -->
-<section class="section reveal band" data-band="2">
-  <h2 style="margin:0 0 12px 0">Privatnost & Integracije</h2>
-  <div class="integrations">
-    <div class="int-card">🔒 Lokalno čuvanje podataka (MVP)</div>
-    <div class="int-card">🧠 AI na srpskom</div>
-    <div class="int-card">📊 Analitika napretka</div>
-    <div class="int-card">📱 Radi na telefonu i računaru</div>
+<!-- Mini demo graf -->
+<section class="section tight">
+  <div class="container reveal">
+    <div class="chart-wrap">
+      <div style="font-weight:900;margin-bottom:6px">Produktivnost & Raspoloženje (poslednje sesije)</div>
+      <div class="legend"><div class="dot dot-prod"></div><div>Produktivnost</div><div class="dot dot-mood" style="margin-left:12px"></div><div>Raspoloženje</div></div>
+      <svg id="mmChart" viewBox="0 0 1100 320" width="100%" height="320" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="gProd" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#4EA3FF"/></linearGradient>
+          <linearGradient id="gMood" x1="0" x2="1" y1="0" y2="0"><stop offset="0%" stop-color="#4EA3FF"/><stop offset="100%" stop-color="#7C5CFF"/></linearGradient>
+        </defs>
+        <g id="grid"></g>
+        <path id="prodPath" fill="none" stroke="url(#gProd)" stroke-width="3" stroke-linecap="round"/>
+        <path id="moodPath" fill="none" stroke="url(#gMood)" stroke-width="3" stroke-linecap="round"/>
+        <g id="xlabels"></g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- KPI -->
+<section class="section tight">
+  <div class="container">
+    <div class="grid-12 kpis reveal">
+      <div class="card"><div class="knum" data-k="__USERS__">0</div><div class="kcap">Aktivnih korisnika</div></div>
+      <div class="card"><div class="knum" data-k="__SESS__">0</div><div class="kcap">Ukupno sesija</div></div>
+      <div class="card"><div class="knum" data-k="__SAT__">0</div><div class="kcap">Zadovoljstvo (%)</div></div>
+      <div class="card"><div class="knum" data-k="__RET__">0</div><div class="kcap">Mesečna zadržanost (%)</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Integracije -->
+<section class="section tight">
+  <div class="container">
+    <h2 class="h2">Privatnost & Integracije</h2>
+    <div class="grid-12 int reveal">
+      <div class="card">🔒 Lokalno čuvanje (MVP)</div>
+      <div class="card">🧠 AI na srpskom</div>
+      <div class="card">📊 Analitika napretka</div>
+      <div class="card">📱 Telefon & računar</div>
+    </div>
   </div>
 </section>
 
 <!-- Testimonials -->
-<section class="section reveal band" data-band="3">
-  <div class="t-wrap">
-    <div class="t-rail" id="tRail">
-      <div class="t-card"><div class="t-name">Mila</div><div class="t-role">28 • Beograd</div><div>“Check-in me drži u ritmu. 5 minuta i osećam pomak.”</div></div>
-      <div class="t-card"><div class="t-name">Nikola</div><div class="t-role">31 • Novi Sad</div><div>“Sviđa mi se što je sve na srpskom i u mom fazonu.”</div></div>
-      <div class="t-card"><div class="t-name">Sara</div><div class="t-role">24 • Niš</div><div>“Grafovi mi jasno pokažu kada padam i zašto.”</div></div>
-      <div class="t-card"><div class="t-name">Vuk</div><div class="t-role">35 • Kragujevac</div><div>“Nije terapija, ali je odličan dnevni alat.”</div></div>
+<section class="section tight">
+  <div class="container reveal">
+    <div class="twrap">
+      <div class="trail" id="trail">
+        <div class="tcard"><b>Mila</b><div style="color:#9AA3B2">28 • Beograd</div><div>“Check-in me drži u ritmu. 5 min i osećam pomak.”</div></div>
+        <div class="tcard"><b>Nikola</b><div style="color:#9AA3B2">31 • Novi Sad</div><div>“Sve je na srpskom i u mom fazonu.”</div></div>
+        <div class="tcard"><b>Sara</b><div style="color:#9AA3B2">24 • Niš</div><div>“Grafovi jasno pokažu kad padam i zašto.”</div></div>
+        <div class="tcard"><b>Vuk</b><div style="color:#9AA3B2">35 • Kragujevac</div><div>“Nije terapija, ali odličan dnevni alat.”</div></div>
+      </div>
+      <div class="tnav"><div class="tbtn" id="prev">◀</div><div class="tbtn" id="next">▶</div></div>
     </div>
-    <div class="t-nav"><div class="t-btn" id="tPrev">◀</div><div class="t-btn" id="tNext">▶</div></div>
   </div>
 </section>
 
-<!-- FAQ -->
-<section class="section reveal band" data-band="1">
-  <div class="faq" id="faq">
-    <div class="faq-item"><button class="faq-q">Da li je MindMate zamena za terapiju?</button>
-      <div class="faq-a">Ne. Nije medicinski alat. Ako si u riziku — pozovi 112 i potraži stručnu pomoć.</div></div>
-    <div class="faq-item"><button class="faq-q">Koliko vremena mi treba dnevno?</button>
-      <div class="faq-a">Obično 3–5 minuta. Dovoljno da zadržiš momentum bez preplavljivanja.</div></div>
-    <div class="faq-item"><button class="faq-q">Kako čuvate privatnost?</button>
-      <div class="faq-a">Podaci su lokalno u okviru app-a za MVP; bez deljenja. Uvek možeš obrisati istoriju.</div></div>
+<!-- ===== BIG FAQ ===== -->
+<section class="section">
+  <div class="container faq-zone faq-clouds reveal">
+    <div class="faq-header">
+      <div class="badge">❓ Česta pitanja</div>
+      <h3 class="faq-title">Pitanja? Odgovori!</h3>
+      <div class="faq-sub">Brzi odgovori na najčešća pitanja o MindMate platformi.</div>
+    </div>
+
+    <div class="faq" id="faq">
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Da li je MindMate zamena za terapiju?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Ne. MindMate nije medicinski alat niti zamena za terapiju. Ako postoji rizik — pozovi 112 i potraži stručnu pomoć.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Koliko vremena mi treba dnevno?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Obično 3–5 minuta: 2 pitanja za check-in i jedan mali mikro-korak (5–10 min) kada želiš da dodaš momentum.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Kako čuvate privatnost?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Za MVP, podaci ostaju lokalno u okviru aplikacije i mogu se obrisati u bilo kom trenutku. Nema deljenja sa trećim stranama.</div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-q" aria-expanded="false">
+          <span class="txt">Da li radi na telefonu i računaru?</span>
+          <span class="chev"><svg viewBox="0 0 20 20"><path d="M6 8l4 4 4-4" fill="none" stroke="#C7CEDA" stroke-width="2" stroke-linecap="round"/></svg></span>
+        </button>
+        <div class="faq-a">Da. Interfejs je responzivan i prilagođava se tvojoj rezoluciji (desktop, tablet, telefon).</div>
+      </div>
+    </div>
+
+    <div class="contact-mini">📧 Imaš pitanje? Piši: <span style="font-weight:700;margin-left:6px">hello@mindmate.app</span></div>
   </div>
 </section>
 
-<div class="sticky-cta" id="stickyCta">
-  <div class="inner">
-    <div class="copy">
-      <h3>Tvoj bolji dan počinje sada</h3>
-      <p>Uđi u ritam: check-in, mikro-navike, jasni trendovi.</p>
-    </div>
-    <div class="actions">
-      <a class="btn btn-primary fx-ripple" href="?home">Isprobaj besplatno</a>
-      <a class="btn btn-ghost fx-ripple" href="?home">Promeni sebe</a>
+<!-- ===== PRICING (Free / Pro) ===== -->
+<section class="section pricing">
+  <div class="container reveal">
+    <div class="wrap">
+      <h2 class="h2" style="margin-bottom:10px">Odaberi svoj ritam</h2>
+      <div class="price-grid">
+        <!-- Free -->
+        <div class="price-card">
+          <div class="price-title">Free Trial</div>
+          <div class="price-row"><div class="price-num">0</div><div class="price-unit">RSD / 14 dana</div></div>
+          <div class="hr"></div>
+          <div class="li"><div class="bullet"></div><div>Kompletne funkcije 14 dana</div></div>
+          <div class="li"><div class="bullet"></div><div>Dnevni check-in i analitika</div></div>
+          <div class="li"><div class="bullet"></div><div>AI chat (srpski)</div></div>
+          <a class="price-btn primary" href="?home">Započni besplatno</a>
+        </div>
+        <!-- Pro -->
+        <div class="price-card">
+          <div class="price-title">Pro</div>
+          <div class="price-row"><div class="price-num">300</div><div class="price-unit">RSD / mes</div></div>
+          <div class="hr"></div>
+          <div class="li"><div class="bullet"></div><div>Neograničen chat & check-in</div></div>
+          <div class="li"><div class="bullet"></div><div>Napredna analitika & ciljevi</div></div>
+          <div class="li"><div class="bullet"></div><div>Prioritetna podrška</div></div>
+          <a class="price-btn ghost" href="?home">Kreni sa Pro planom</a>
+        </div>
+      </div>
     </div>
   </div>
-</div>
+</section>
 
-<div style="text-align:center;color:#9AA3B2;margin-top:22px">© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>
+<!-- CTA -->
+<section class="section tight">
+  <div class="container reveal" style="text-align:center">
+    <a class="btn btn-primary" href="?home">Kreni besplatno</a>
+  </div>
+</section>
+
+<div class="footer">© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>
 
 <script>
-// ===== Cursor + ripple =====
-const flower=document.getElementById('cursorFlower');
-document.addEventListener('mousemove',(e)=>{ flower.style.left=e.clientX+'px'; flower.style.top=e.clientY+'px'; });
-document.querySelectorAll('a,.btn,.t-btn,.ti,.f-card,.comp-card,.int-card,.t-card,.logo').forEach(el=>{
-  el.addEventListener('mouseenter',()=>flower.classList.add('cursor-boost'));
-  el.addEventListener('mouseleave',()=>flower.classList.remove('cursor-boost'));
-});
-document.addEventListener('click', function(e){
-  const b=e.target.closest('.fx-ripple'); if(!b) return;
-  const r=document.createElement('span'); r.className='ink';
-  const rect=b.getBoundingClientRect(); const size=Math.max(rect.width, rect.height);
-  Object.assign(r.style,{position:'absolute',borderRadius:'50%',background:'rgba(255,255,255,.45)',
-    width:size+'px',height:size+'px',left:(e.clientX-rect.left-size/2)+'px',top:(e.clientY-rect.top-size/2)+'px',
-    transform:'scale(0)',animation:'ripple .7s linear'});
-  b.appendChild(r); setTimeout(()=>r.remove(),700);
-}, {passive:true});
+// Reveal
+const ob=new IntersectionObserver(es=>es.forEach(x=>x.isIntersecting&&x.target.classList.add('v')),{threshold:.2});
+document.querySelectorAll('.reveal').forEach(el=>ob.observe(el));
 
-// ===== Reveal on scroll (sporije) =====
-const io=new IntersectionObserver(es=>es.forEach((x,i)=>{
-  if(x.isIntersecting){
-    setTimeout(()=>x.target.classList.add('visible'), 120); // blagi delay
-  }
-}),{threshold:.18});
-document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+// KPI count-up
+function cu(el){const t=parseInt(el.getAttribute('data-k'))||0,d=1200,s=performance.now();
+function tick(n){const p=Math.min((n-s)/d,1);el.textContent=Math.floor(t*(.15+.85*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)} requestAnimationFrame(tick)}
+const ko=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.knum').forEach(cu);ko.unobserve(x.target)}}),{threshold:.3});
+document.querySelectorAll('.kpis').forEach(el=>ko.observe(el));
 
-// ===== Background band switching =====
-const b1=document.getElementById('band1'), b2=document.getElementById('band2'), b3=document.getElementById('band3');
-const bands=[b1,b2,b3];
-const bo=new IntersectionObserver(es=>{
-  es.forEach(en=>{
-    if(!en.isIntersecting) return;
-    const band = en.target.getAttribute('data-band');
-    bands.forEach((b,i)=>b.classList.toggle('show', (i+1)==band));
-  });
-},{threshold:.5});
-document.querySelectorAll('.band').forEach(s=>bo.observe(s));
-
-// ===== Global petals (lagano) =====
-const svgNS="http://www.w3.org/2000/svg"; const petals=document.getElementById('petals');
-function addPetal(scale, opacity, durMin, durMax){
-  const s=(12+Math.random()*22)*scale;
-  const g=document.createElementNS(svgNS,'g');
-  const p=document.createElementNS(svgNS,'path');
-  p.setAttribute('d','M10,0 C22,8 22,32 10,42 C-2,32 -2,8 10,0 Z');
-  if(!document.getElementById('petalGrad')){
-    const defs=document.createElementNS(svgNS,'defs');
-    const lg=document.createElementNS(svgNS,'linearGradient'); lg.id='petalGrad'; lg.setAttribute('x1','0'); lg.setAttribute('y1','0'); lg.setAttribute('x2','1'); lg.setAttribute('y2','1');
-    const s1=document.createElementNS(svgNS,'stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#7C5CFF');
-    const s2=document.createElementNS(svgNS,'stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','#4EA3FF');
-    lg.appendChild(s1); lg.appendChild(s2); defs.appendChild(lg); petals.appendChild(defs);
-  }
-  p.setAttribute('fill','url(#petalGrad)'); p.setAttribute('opacity',opacity); g.appendChild(p);
-  const x = Math.random()*window.innerWidth; const rot = (Math.random()*60 - 30);
-  g.setAttribute('transform',`translate(${x},-30) scale(${s/42}) rotate(${rot})`); petals.appendChild(g);
-  const drift = (-60 + Math.random()*120); const dur = durMin + Math.random()*(durMax-durMin);
-  const kyframes = [{transform:`translate(${x}px,-30px) scale(${s/42}) rotate(${rot}deg)`},
-                    {transform:`translate(${x+drift}px, ${window.innerHeight+60}px) scale(${s/42}) rotate(${rot+360}deg)`}];
-  g.animate(kyframes,{duration:dur,easing:'linear'}); setTimeout(()=>g.remove(), dur);
-}
-for(let i=0;i<16;i++) addPetal(1, .65, 7000, 11000);
-setInterval(()=>addPetal(1.0, .62, 8000, 13000), 1000);
-
-// ===== KPI count-up =====
-function countUp(el){const t=parseInt(el.getAttribute('data-target'))||0,d=1600,s=performance.now();
-  function tick(now){const p=Math.min((now-s)/d,1);el.textContent=Math.floor(t*(.1+.9*p)).toLocaleString(); if(p<1) requestAnimationFrame(tick)}
-  requestAnimationFrame(tick)}
-const kio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){x.target.querySelectorAll('.num').forEach(countUp);kio.unobserve(x.target)}})},{threshold:.35});
-document.querySelectorAll('#kpiBlock').forEach(el=>kio.observe(el));
-
-// ===== Chart (SVG) =====
-const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=360,P=48,ymin=0,ymax=100;
+// Chart
+const labels=__X_LABELS__, prod=__P_SERIES__, mood=__M_SERIES__; const W=1100,H=320,P=44,ymin=0,ymax=100;
 const grid=document.getElementById('grid'), xg=document.getElementById('xlabels'), svg=document.getElementById('mmChart');
-for(let i=0;i<=5;i++){const y=P+(H-2*P)*(i/5), l=document.createElementNS("http://www.w3.org/2000/svg","line");
+for(let i=0;i<=4;i++){const y=P+(H-2*P)*(i/4), l=document.createElementNS("http://www.w3.org/2000/svg","line");
   l.setAttribute("x1",P);l.setAttribute("x2",W-P);l.setAttribute("y1",y);l.setAttribute("y2",y);l.setAttribute("stroke","rgba(255,255,255,.08)");grid.appendChild(l)}
 labels.forEach((lab,i)=>{const x=P+(W-2*P)*(i/(labels.length-1||1)), t=document.createElementNS("http://www.w3.org/2000/svg","text");
-  t.setAttribute("x",x);t.setAttribute("y",H-12);t.setAttribute("fill","#9AA3B2");t.setAttribute("font-size","12");t.setAttribute("text-anchor","middle");
+  t.setAttribute("x",x);t.setAttribute("y",H-10);t.setAttribute("fill","#9AA3B2");t.setAttribute("font-size","12");t.setAttribute("text-anchor","middle");
   t.textContent=lab.slice(5).replace("-","/");xg.appendChild(t)});
-function path(vals){const pts=vals.map((v,i)=>[P+(W-2*P)*(i/(vals.length-1||1)), P+(H-2*P)*(1-(v-ymin)/(ymax-ymin))]);
-  if(!pts.length)return ""; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=1;i<pts.length;i++){d+=` L ${pts[i][0]} ${pts[i][1]}`} return d}
-const prodPath=document.getElementById('prodPath'), moodPath=document.getElementById('moodPath');
-const prodGlow=document.getElementById('prodGlow'), moodGlow=document.getElementById('moodGlow');
-const d1=path(prod), d2=path(mood);
-prodGlow.setAttribute("d",d1); moodGlow.setAttribute("d",d2);
-prodPath.setAttribute("d",d1); moodPath.setAttribute("d",d2);
-function strokeAnim(p,d=1800){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
-const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){strokeAnim(prodPath,1700);setTimeout(()=>strokeAnim(moodPath,1900),200);cio.unobserve(svg)}})},{threshold:.3});
+function path(vals){const pts=vals.map((v,i)=>[P+(W-2*P)*(i/(vals.length-1||1)), P+(H-2*P)*(1-(v-ymin)/(ymax-ymin))]); if(!pts.length)return ""; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=1;i<pts.length;i++){d+=` L ${pts[i][0]} ${pts[i][1]}`} return d}
+const prodPath=document.getElementById('prodPath'), moodPath=document.getElementById('moodPath'); prodPath.setAttribute("d",path(prod)); moodPath.setAttribute("d",path(mood));
+function sAnim(p,d=1300){const L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition=`stroke-dashoffset ${d}ms ease`;p.style.strokeDashoffset="0"}
+const cio=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){sAnim(prodPath,1200);setTimeout(()=>sAnim(moodPath,1500),150);cio.unobserve(svg)}})},{threshold:.35});
 cio.observe(svg);
 
-// ===== Testimonials carousel (hover scale fix već u CSS) =====
-(function(){const rail=document.getElementById('tRail');if(!rail) return; let i=0;
-  const cards=rail.children.length; function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+18)}px)`;}
-  document.getElementById('tPrev').onclick=()=>go(-1); document.getElementById('tNext').onclick=()=>go(1);
-})();
+// Testimonials slider
+(function(){const rail=document.getElementById('trail'); if(!rail) return; let i=0; const cards=rail.children.length;
+function go(d){i=(i+d+cards)%cards; rail.style.transform=`translateX(${-i*(rail.children[0].offsetWidth+16)}px)`;}
+document.getElementById('prev').onclick=()=>go(-1); document.getElementById('next').onclick=()=>go(1);})();
 
-// ===== FAQ toggle =====
-document.querySelectorAll('.faq-q').forEach(q=>q.addEventListener('click',()=>{
-  const a=q.parentElement.querySelector('.faq-a'); const open=a.style.maxHeight && a.style.maxHeight!=='0px';
-  a.style.maxHeight=open?'0':a.scrollHeight+'px'; a.style.padding=open?'0 16px':'12px 16px';
-}));
-
-// ===== Sticky CTA =====
-const sticky=document.getElementById('stickyCta'); let shown=false;
-function chk(){const st=scrollY||0, dh=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight), wh=innerHeight, ratio=(st+wh)/dh; const s=ratio>0.72;
-  if(s!==shown){shown=s; sticky.classList.toggle('show',s)}}
-addEventListener('scroll',chk,{passive:true}); addEventListener('resize',chk,{passive:true}); setTimeout(chk,400);
+// FAQ logic
+document.querySelectorAll('.faq-item').forEach(item=>{
+  const btn=item.querySelector('.faq-q');
+  const chev=item.querySelector('.chev');
+  const panel=item.querySelector('.faq-a');
+  btn.addEventListener('click',()=>{
+    const open = btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded', String(!open));
+    chev.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
+    if(open){
+      panel.style.maxHeight = panel.scrollHeight + 'px';
+      requestAnimationFrame(()=>{ panel.style.maxHeight = '0px'; panel.classList.remove('open'); });
+    }else{
+      panel.classList.add('open');
+      panel.style.maxHeight = panel.scrollHeight + 'px';
+    }
+  });
+});
 </script>
 </body></html>
 """
 
 def render_landing():
-    users, sessions, sat, avg_minutes, streaks, retention, nps = compute_metrics()
+    users, sessions, sat, retention = compute_metrics()
     labels, prod, mood = compute_trend_series()
-    html = (LANDING_TEMPLATE
+    html = (LANDING
             .replace("__SESS__", str(max(sessions,0)))
             .replace("__USERS__", str(max(users,1)))
             .replace("__SAT__", str(max(min(sat,100),0)))
@@ -684,7 +642,7 @@ def render_landing():
             .replace("__X_LABELS__", json.dumps(labels))
             .replace("__P_SERIES__", json.dumps(prod))
             .replace("__M_SERIES__", json.dumps(mood)))
-    st_html(html, height=6200, width=1280, scrolling=True)
+    st_html(html, height=5200, width=1280, scrolling=True)
 
 # ---------- HOME / CHAT / CHECKIN / ANALYTICS ----------
 def render_home():
@@ -778,4 +736,4 @@ elif page=="chat": render_chat()
 elif page=="checkin": render_checkin()
 elif page=="analytics": render_analytics()
 
-st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:18px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center;color:#9AA3B2;margin-top:16px'>© 2025 MindMate. Nije medicinski alat. Za hitne slučajeve — 112.</div>", unsafe_allow_html=True)
